@@ -1,0 +1,271 @@
+---
+title: Managing apps on Kubernetes
+description: Day-to-day operations for GOV.UK applications on Kubernetes — viewing app info, scaling, setting environment variables, managing secrets, rolling back, and exec-ing into pods.
+---
+
+This page covers the most common day-to-day operations for managing GOV.UK applications on the Kubernetes platform.
+
+## Set a default namespace
+
+All GOV.UK applications run in the `apps` namespace. Set it as your default to avoid adding `-n apps` to every command:
+
+```bash
+kubectl config set-context --current --namespace=apps
+```
+
+## Get information about your app
+
+### List all deployed apps
+
+```bash
+kubectl -n apps get deployments
+```
+
+### Describe a deployment
+
+```bash
+kubectl -n apps describe deployment <deployment>
+```
+
+The output includes the pod template, containers, and environment variables.
+
+### List pods for an app
+
+```bash
+kubectl -n apps get pods
+```
+
+### Describe a pod
+
+```bash
+kubectl -n apps describe pod <pod>
+```
+
+The output includes pod image, host, resource limits, readiness checks, and environment variables.
+
+## View app logs
+
+### View logs for a pod
+
+```bash
+kubectl -n apps logs <pod>
+```
+
+### View logs for a specific container
+
+```bash
+kubectl -n apps logs <pod> -c <container>
+```
+
+### View logs for all containers in a deployment
+
+```bash
+kubectl logs -n apps deploy/<deployment> <container>
+```
+
+You can also view logs in [Logit](https://logit.io/). Access the EKS stack for your environment (for example, **GOV.UK INTEGRATION EKS**) and launch Kibana to filter logs by app, pod, container, and other parameters.
+
+## View Kubernetes events
+
+Kubernetes events record actions such as starting a pod, pulling an image, or a pod crashing. They are useful for debugging.
+
+### Via kubectl (last 1 hour only)
+
+```bash
+kubectl -n apps get events
+```
+
+To filter events for a specific resource:
+
+```bash
+kubectl -n apps get events --field-selector=involvedObject.name=<resource>
+```
+
+For example:
+
+```bash
+kubectl -n apps get events --field-selector=involvedObject.name=publisher-7795bd698-v6bfc
+```
+
+### Via Logit (up to 14 days in production)
+
+Events are stored in Logit in an ElasticSearch index with the prefix `kubernetes-events-`. In Kibana, switch the index pattern from `filebeat-*` to `kubernetes-events-*`.
+
+To filter by namespace:
+
+```text
+involvedObject.namespace: "apps"
+```
+
+To filter by a specific resource:
+
+```text
+involvedObject.name: "publisher-7795bd698-v6bfc"
+```
+
+## Scale your app
+
+### Vertical scaling (replica count)
+
+Update `replicaCount` in the app's Helm values for the relevant environment (for example, [`values-integration.yaml`](https://github.com/alphagov/govuk-helm-charts/blob/main/charts/app-config/values-integration.yaml)):
+
+```yaml
+- name: example
+  helmValues:
+    replicaCount: 3
+    workerReplicaCount: 2
+```
+
+<Info>
+  You should have at least 3 replicas of each pod type running in production and staging environments. This covers the three AWS availability zones and improves reliability.
+</Info>
+
+### Horizontal scaling (CPU and memory resources)
+
+You can scale the following resource categories:
+
+- `appResources` — resources your app uses
+- `workerResources` — resources your worker nodes use (if enabled)
+- `jobResources` — resources your asset upload jobs use (if enabled)
+- `nginxResources` — resources the NGINX proxy uses
+
+```yaml
+- name: example
+  helmValues:
+    appResources:
+      requests:
+        cpu: 100m
+        memory: 512Mi
+      limits:
+        cpu: 500m
+        memory: 1Gi
+```
+
+Merge the pull request and Argo CD will automatically sync and apply the new configuration.
+
+<Warning>
+  Very large increases to resource requests or replica counts can hit cluster-wide limits. Speak to the [Platform Engineering team](https://docs.publishing.service.gov.uk/kubernetes/contact-platform-engineering-team.html) if you are unsure about the impact of a scaling change.
+</Warning>
+
+## Set or change environment variables
+
+### Per-app environment variables
+
+Non-secret environment variables are defined in the per-environment Helm values files:
+
+- `charts/app-config/values-integration.yaml`
+- `charts/app-config/values-staging.yaml`
+- `charts/app-config/values-production.yaml`
+
+```yaml
+- name: example
+  helmValues:
+    extraEnv:
+      - name: RETICULATE_SPLINES
+        value: "1"
+```
+
+Changes are rolled out automatically by Argo CD within a few minutes of merging the PR.
+
+### Global environment variables
+
+Global environment variables are defined in a [ConfigMap Helm template](https://github.com/alphagov/govuk-helm-charts/blob/main/charts/app-config/templates/env-configmap.yaml) and apply to all apps. After merging, you must do a rolling restart:
+
+```bash
+kubectl rollout restart deploy/foo-app deploy/bar-app
+```
+
+Or for all apps:
+
+```bash
+kubectl rollout restart deploy
+```
+
+Monitor the rollout:
+
+```bash
+kubectl rollout status deploy
+```
+
+### Secrets-backed environment variables
+
+To update a secret that backs an environment variable:
+
+<Steps>
+  <Step title="Edit the secret in Secrets Manager">
+    Edit the JSON value of the secret in the [AWS Secrets Manager console](https://eu-west-1.console.aws.amazon.com/secretsmanager/listsecrets?region=eu-west-1), or via the CLI:
+
+    ```bash
+    aws secretsmanager put-secret-value --secret-id govuk/foo-app/api-key --secret-string '{"key":"new-value"}'
+    ```
+  </Step>
+
+  <Step title="Force a Kubernetes secret refresh">
+    Delete the corresponding Kubernetes secret to force External Secrets Operator to pull the new value immediately (otherwise it polls once per hour):
+
+    ```bash
+    kubectl delete secret foo-app-api-key
+    ```
+  </Step>
+
+  <Step title="Restart the app">
+    Do a rolling restart of the affected deployment:
+
+    ```bash
+    kubectl rollout restart deploy/foo-app
+    kubectl rollout status deploy/foo-app
+    ```
+  </Step>
+</Steps>
+
+## Roll back your app
+
+### Update the image tag in govuk-helm-charts
+
+<Steps>
+  <Step title="Find the release tag">
+    In GitHub, go to your app's repository then **Releases → Tags** and note the tag you want to roll back to (for example, `v234`).
+  </Step>
+
+  <Step title="Update the image tag file">
+    Go to the [`image-tags` folder in govuk-helm-charts](https://github.com/alphagov/govuk-helm-charts/tree/main/charts/app-config/image-tags), find the file for your application in the appropriate environment, and update `image_tag` to the older version.
+  </Step>
+
+  <Step title="Merge the pull request">
+    Create a pull request and merge the change. Argo CD automatically deploys the older version.
+  </Step>
+</Steps>
+
+### Trigger the deploy GitHub Action (integration only)
+
+Go to **Actions → Workflows → Deploy** in your app's GitHub repository, select **Run workflow**, and enter the release number you want to roll back to.
+
+<Note>
+  Manually triggering the deploy workflow stops automatic image updates for that app. Re-enable them by running the **Set automatic_deploys_enabled** workflow from the Actions tab.
+</Note>
+
+## Troubleshoot state issues
+
+### Argo sync stuck on a hook
+
+If an Argo CD application is stuck syncing while waiting for a hook from a job that is not running:
+
+1. Sign into [Argo CD](https://argoproj.github.io/).
+2. Choose the app tile from the list of **Applications**.
+3. Select **Sync Status** to view the sync information table.
+4. Select **Terminate** to cancel the sync operation.
+5. Re-sync the application by selecting **Sync**.
+
+This recreates the job needed to complete the sync.
+
+## View out-of-memory events
+
+Kubernetes kills pods that exceed their memory limits. To find pods killed by out-of-memory errors:
+
+1. Log in to the AWS console.
+2. Go to [CloudWatch Logs Insights](https://eu-west-1.console.aws.amazon.com/cloudwatch/home?region=eu-west-1#logsV2:logs-insights).
+3. Select **Saved and sample queries**, then pick **Pods Killed (Out of Memory)**.
+
+<Tip>
+  Limit CloudWatch Logs Insights queries to a single day of logs at a time to keep costs down.
+</Tip>

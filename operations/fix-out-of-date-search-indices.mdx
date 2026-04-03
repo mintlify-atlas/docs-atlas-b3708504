@@ -1,0 +1,104 @@
+---
+title: Fixing out-of-date search indices
+description: How to resync search indices when they are out of sync with Publishing API, for example after restoring a backup or recovering from downtime.
+---
+
+If the data in the search index is out of sync with the Publishing API — for example, after restoring an Elasticsearch backup — any `publish` and `unpublish` messages that were not processed need to be resent.
+
+The approach to resyncing depends on which index is affected.
+
+---
+
+## `govuk` index
+
+Content in the `govuk` index is populated from the [Publishing API message queue](https://github.com/alphagov/search-api/blob/main/docs/new-indexing-process.md). Missing documents can be recovered by resending the relevant content to the message queue using the `represent_downstream:published_between` Rake task in Publishing API.
+
+Run the task, replacing the two timestamps to cover the period of downtime:
+
+```bash
+bundle exec rake "represent_downstream:published_between['2018-12-17T01:02:30', '2018-12-18T10:20:30']"
+```
+
+[Other replay options are available](https://github.com/alphagov/publishing-api/blob/main/lib/tasks/represent_downstream.rake) — for example, replaying all traffic for a single publishing app or document type. Note that these options replay the **entire Publishing API history** for that app or doctype and may take a significant amount of time.
+
+---
+
+## `government` and `detailed` indices
+
+<Note>
+  This will not be necessary after Whitehall content has been fully migrated to the `govuk` index.
+</Note>
+
+These indices are populated by Whitehall calling an HTTP API in Search API directly. Missing documents can be recovered by resending the content to Search API using the `search:index:published_between` Rake task in Whitehall.
+
+Run the task, replacing the two timestamps to cover the period of downtime:
+
+```bash
+bundle exec rake "search:index:published_between['2018-12-17T01:02:30', '2018-12-18T10:20:30']"
+```
+
+---
+
+## `metasearch` index
+
+The `metasearch` index stores best bets, which are published by Search Admin communicating with Search API directly (the same mechanism used by Whitehall for the `government` and `detailed` indices).
+
+Run the `reindex_best_bets` Rake task in Search Admin to resend all best bets to Search API:
+
+```bash
+bundle exec rake reindex_best_bets
+```
+
+---
+
+## Checking whether content is in the index
+
+You can check whether a specific page is correctly indexed using the public Search API:
+
+```
+https://www.gov.uk/api/search.json?filter_link=/council-tax
+```
+
+An empty response means Search has never received the content. You can also request specific fields:
+
+```
+https://www.gov.uk/api/search.json?filter_link=/council-tax&fields=format,content_id
+```
+
+### Querying the Elasticsearch index directly
+
+If the document is missing from the Search API response, you can query the underlying Elasticsearch index directly:
+
+```sh
+govuk_setenv search-api \
+  bash -c 'curl "$ELASTICSEARCH_URI/detailed,government,govuk/_search" \
+    -H "content-type: application/json" \
+    -d "{
+      \"post_filter\": {
+        \"term\": {
+          \"link\": \"/the/path/to/the/page\"
+        }
+      }
+    }"' | json_pp
+```
+
+To search by content ID instead of path, use `\"content_id\": \"...\"` in the filter.
+
+If the document is present and looks correct, the problem is likely that the document does not match the search query. You can debug the query by adding `debug=show_query` to the Search API URL:
+
+```
+https://www.gov.uk/api/search.json?q=badgers&debug=show_query
+```
+
+---
+
+## Correcting search data for specific issues
+
+<AccordionGroup>
+  <Accordion title="Published content is missing from search, finders, or navigation">
+    Try republishing the content from the relevant publishing application. See [Republishing content](/operations/republishing-content) for per-app instructions.
+  </Accordion>
+  <Accordion title="Unpublished or redirected content is still showing in search">
+    Unpublished, deleted, or redirected content can be removed from search manually using [Search Admin](https://search-admin.publishing.service.gov.uk/).
+  </Accordion>
+</AccordionGroup>

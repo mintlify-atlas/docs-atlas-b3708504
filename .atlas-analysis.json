@@ -1,28 +1,11 @@
 {
-  "$schema": "https://mintlify.com/docs.json",
-  "name": "GOV.UK Developer Docs",
+  "projectType": "general",
+  "projectName": "GOV.UK Developer Docs",
+  "projectDescription": "Comprehensive technical documentation for developers working on GOV.UK, covering onboarding, architecture, deployments, operations, and platform infrastructure.",
   "theme": "maple",
-  "colors": {
-    "primary": "#1e75bc",
-    "light": "#8cbcdc",
-    "dark": "#040404"
-  },
-  "favicon": "https://media.brand.dev/1a663760-838b-4568-886b-1f5d1438760c.svg",
-  "logo": {
-    "light": "https://media.brand.dev/f3adbf3a-118b-4cbf-b5fa-afa2bdb05d2f.svg",
-    "dark": "https://media.brand.dev/f3adbf3a-118b-4cbf-b5fa-afa2bdb05d2f.svg"
-  },
-  "navbar": {
-    "primary": {
-      "type": "github",
-      "href": "https://github.com/alphagov/govuk-developer-docs"
-    }
-  },
-  "footer": {
-    "socials": {
-      "github": "https://github.com/alphagov/govuk-developer-docs"
-    }
-  },
+  "primaryColor": "#1e75bc",
+  "lightColor": "#8cbcdc",
+  "darkColor": "#040404",
   "navigation": {
     "tabs": [
       {
@@ -171,5 +154,27 @@
         ]
       }
     ]
-  }
+  },
+  "keyFeatures": [
+    "Developer onboarding guide for new GOV.UK engineers",
+    "Comprehensive architecture documentation (shallow and deep-dive)",
+    "Deployment pipeline documentation (GitHub Actions + Argo CD + Kubernetes)",
+    "Incident management and on-call support runbooks",
+    "Rails application conventions and best practices",
+    "Kubernetes cluster management guides",
+    "Monitoring, logging, and observability (Logit, Sentry, Prometheus, Grafana)",
+    "Content publishing and GOV.UK search operations",
+    "Security, secrets management, and production access rules",
+    "Analytics data structure documentation for Google Analytics 4"
+  ],
+  "publicApiSurface": [
+    "GET /apps.json - List of GOV.UK applications",
+    "GET /repos.json - List of GOV.UK repositories",
+    "GET /gems.json - List of GOV.UK gems",
+    "Manual pages at /manual/{topic}.html",
+    "Kubernetes guides at /kubernetes/{section}/",
+    "Analytics reference at /analytics/",
+    "Content schemas at /content-schemas.html",
+    "Document types at /document-types.html"
+  ]
 }

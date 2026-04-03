@@ -1,0 +1,92 @@
+---
+title: DNS management
+description: How DNS is managed for GOV.UK — Route 53, hosted zones, the gov.uk domain structure, and how to make changes to each DNS zone.
+---
+
+GOV.UK is responsible for managing several DNS zones, spanning a number of `*.gov.uk` domains. As of February 2024, there are 45 hosted zones configuring many hundreds of domains.
+
+List all hosted zones from a terminal:
+
+```bash
+gds aws govuk-production-developer -- aws route53 list-hosted-zones | grep Name
+```
+
+## Domain overview
+
+GOV.UK uses a few key domains:
+
+- `alphagov.co.uk` — the old domain GOV.UK publishing used to live on. Records point to Bouncer so these URLs redirect correctly.
+- `publishing.service.gov.uk` and `govuk.service.gov.uk` — where GOV.UK lives.
+
+## DNS zones and how to change them
+
+<AccordionGroup>
+  <Accordion title="*.service.gov.uk — delegating to other government services">
+    The GOV.UK Platform Engineering team is responsible for delegating DNS to other government services. We manage only `NS` records in this zone — if you receive a request concerning anything other than `NS` records, reject it.
+
+    After verifying the authenticity of the request:
+
+    1. Ensure you have [Terraform Cloud access](https://docs.publishing.service.gov.uk/manual/terraform-cloud.html).
+    2. Commit your changes in [`govuk-dns-tf`](https://github.com/alphagov/govuk-dns-tf) (see [example PR](https://github.com/alphagov/govuk-dns-tf/pull/14)).
+    3. Open a pull request — Terraform Cloud will automatically perform a plan.
+    4. Open the [govuk-dns-tf workspace](https://app.terraform.io/app/govuk/workspaces/govuk-dns-tf) in Terraform Cloud to review the plan.
+    5. If the plan looks correct, merge your PR.
+    6. From the landing page, click the green pre-merge check tick and open the "details" link from the Terraform Cloud check.
+    7. Press **Confirm and apply** in Terraform Cloud.
+  </Accordion>
+
+  <Accordion title="govuk.digital and govuk-internal.digital">
+    These zones are only used in environments running on AWS. They are hosted in Route 53 and managed by Terraform.
+
+    Changes can be made in the [`govuk-aws`](https://github.com/alphagov/govuk-aws/) and [`govuk-aws-data`](https://github.com/alphagov/govuk-aws-data/) repositories.
+
+    Ask the Platform Engineering team if you need help making changes.
+  </Accordion>
+
+  <Accordion title="publishing.service.gov.uk">
+    To make a change to this zone, add the records to the [Terraform configuration for GOV.UK publishing infrastructure](https://github.com/alphagov/govuk-infrastructure/blob/main/terraform/deployments/tfc-configuration/govuk-publishing-infrastructure.tf).
+
+    The deployment process is the same as for any other Terraform root in the `govuk-infrastructure` repository.
+  </Accordion>
+
+  <Accordion title="gov.uk top-level domain">
+    [Jisc](https://www.jisc.ac.uk/) hosts DNS for the `gov.uk.` zone. Requests to modify DNS records for `gov.uk.` must be sent by email to `naming@ja.net` from someone on Jisc's approved contacts list. Speak to a member of Senior Tech or the Platform Engineering team if you need to make a change.
+
+    Before requesting any changes, notify:
+
+    - GOV.UK Technical On Call (via Slack)
+    - GOV.UK's Head of Tech and the senior tech team
+    - The CDDO domains team (#team-domains)
+
+    **Important constraints:**
+
+    - The domain name `gov.uk.` is an apex domain and [cannot have a CNAME record](https://tools.ietf.org/html/rfc1912#section-2.4). It uses A records pointing directly to anycast VIPs for the CDN.
+    - `www.gov.uk.` is a CNAME to `www-cdn.production.govuk.service.gov.uk.`, so CDN providers can be changed without involving Jisc.
+  </Accordion>
+
+  <Accordion title="Non-gov.uk domains">
+    GOV.UK also manages DNS zones for some non-`gov.uk` domains (for example, `independent-inquiry.uk`).
+
+    These are managed in Terraform, with each domain having its own zone configuration file in [`govuk-dns-tf`](https://github.com/alphagov/govuk-dns-tf).
+  </Accordion>
+</AccordionGroup>
+
+## How www.gov.uk resolves
+
+```text
+User request
+    ↓
+gov.uk. (Jisc-hosted, A records → CDN anycast VIPs)
+    ↓
+www.gov.uk. CNAME → www-cdn.production.govuk.service.gov.uk.
+    ↓
+Fastly CDN edge node
+    ↓
+GOV.UK origin (AWS eu-west-1)
+```
+
+This structure means GOV.UK can change CDN provider by updating the CNAME target for `www.gov.uk.` without requiring changes at the Jisc-controlled apex zone.
+
+## Further reading
+
+For documentation on when and how to respond to DNS delegation and domain verification requests, see the [DNS change request and hostmaster Google doc](https://docs.google.com/document/d/14M61iNjiNc2JcP5E5E3B9H54GCBnKKQKllhFr-PJlNI/edit).

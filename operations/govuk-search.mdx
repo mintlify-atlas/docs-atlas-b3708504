@@ -1,0 +1,122 @@
+---
+title: How GOV.UK search works
+description: An overview of the two search stacks on GOV.UK — site search powered by Search API v2 and Google Vertex AI Search, and finders powered by Search API v1 and Elasticsearch.
+---
+
+There are two common kinds of public-facing search on GOV.UK: **site search** and **finders**. Both are rendered by [Finder Frontend](https://github.com/alphagov/finder-frontend), but they use different search backends.
+
+In addition, there is a publicly available API at `https://www.gov.uk/api/search.json` powered by [Search API v1](https://github.com/alphagov/search-api). See the [Search API usage docs](https://docs.publishing.service.gov.uk/repos/search-api/using-the-search-api.html) for examples. There is no equivalent public endpoint for Search API v2.
+
+---
+
+## Site search
+
+Site search is available on the GOV.UK homepage and from the blue super-navigation header at the top of all GOV.UK pages. Its URL is `https://www.gov.uk/search/all`, rendered by Finder Frontend and referred to in code as the `all_content` finder.
+
+Search results for site search are usually provided by **Search API v2** and **Google Vertex AI Search**. Requests fall back to Search API v1 (Elasticsearch) in the following cases:
+
+1. No search query is provided (browsing without a keyword)
+2. The query parameter `use_v1=true` is present — e.g. `https://www.gov.uk/search/all?order=updated-newest&use_v1=true`
+3. A `world_locations` query parameter is present — e.g. `https://www.gov.uk/search/all?order=updated-newest&world_locations=france`
+
+---
+
+## Finders
+
+Finders are search pages configured to return only a subset of results scoped by document type. They are rendered by Finder Frontend, and their search results are provided by **Search API v1**.
+
+Some examples:
+
+- `https://www.gov.uk/search/news-and-communications`
+- `https://www.gov.uk/search/research-and-statistics`
+- `https://www.gov.uk/government/statistical-data-sets`
+
+All finder content items are configured and published from Search API, except for specialist finders which are published by [Specialist Publisher](https://github.com/alphagov/specialist-publisher) — for example, `https://www.gov.uk/cma-cases`.
+
+---
+
+## Search API v1 vs Search API v2
+
+<CardGroup cols={2}>
+  <Card title="Search API v1" icon="database">
+    Uses an older version of **Elasticsearch** as its underlying search engine. Also powers finders and the public `search.json` API. There is currently no clear roadmap for retiring it.
+  </Card>
+  <Card title="Search API v2" icon="sparkles">
+    Built to improve search quality for the majority of GOV.UK users. Uses **Google Cloud Platform's Vertex AI Search** (Discovery Engine) as its underlying engine. Retains a minimally compatible API with v1.
+  </Card>
+</CardGroup>
+
+---
+
+## How content gets into search
+
+Content is published via Publishing API. After an edition changes, Publishing API publishes a message to the `published_documents` topic exchange on its RabbitMQ broker. Search API v1 and Search API v2 both subscribe to this exchange to perform post-publishing indexing.
+
+<Steps>
+  <Step title="Content is published">
+    A publishing application sends a content change to Publishing API, which processes it and places an update message onto the RabbitMQ `published_documents` exchange.
+  </Step>
+  <Step title="Search workers consume the message">
+    - **Search API v2**: The `PublishingApiMessageProcessor` picks up the message, acquires a lock on the content ID, extracts content and metadata, and updates the document in Vertex AI Search.
+    - **Search API v1**: The `MessageProcessor` picks up the message and indexes the content into the appropriate Elasticsearch index.
+  </Step>
+  <Step title="Results are served to users">
+    When a user searches, Finder Frontend queries either Search API v2 or v1 (depending on the rules above) and renders the returned results.
+  </Step>
+</Steps>
+
+### Legacy indexing in Search API v1
+
+Whitehall also makes some direct HTTP calls to Search API for certain non-editioned content, via `Whitehall::SearchIndex`. This legacy behaviour is recognised tech debt and is in the process of being removed. The [Search API migrated formats file](https://github.com/alphagov/search-api/blob/main/config/govuk_index/migrated_formats.yaml) controls which document types are expected from each source to prevent double-indexing.
+
+---
+
+## Search API v1 indices
+
+Search API v1 (Elasticsearch) has multiple indices:
+
+| Index | Purpose |
+|---|---|
+| `govuk` | Populated from Publishing API; intended to encapsulate all GOV.UK content |
+| `government` | Legacy index for some Whitehall content in the process of being migrated to `govuk` |
+| `metasearch` | Stores best bets configured in Search Admin |
+| `page-traffic` | Stores popularity data used for relevance ranking |
+
+You can find out which index a piece of content is saved under via the Search API:
+
+```
+https://www.gov.uk/api/search.json?filter_link=/government/news/example-slug
+```
+
+Look for the `"index"` field in the response.
+
+---
+
+## Site search architecture (Search API v2)
+
+The site search stack built on Search API v2 introduces the following components:
+
+- **Vertex AI Search (VAIS)**: A GCP deployment managed by Terraform, with per-environment projects containing a datastore, engine, and serving configuration.
+- **Search API v2**: A Ruby on Rails application on GOV.UK's Kubernetes platform, providing a query API and synchronisation module for updating the VAIS datastore.
+- **User event data pipeline**: BigQuery tables of GA4 user interaction data, imported into Vertex AI Search three times daily to train the ranking model.
+
+### When a user performs a search
+
+1. As the user types, autocomplete suggestions are served by Finder Frontend calling Search API v2.
+2. When the user submits a query, Finder Frontend constructs a request to Search API v2.
+3. Search API v2 applies query-time boosts, translates the request to a VAIS Discovery Engine API call, and maps the response back to the format expected by Finder Frontend.
+4. Finder Frontend renders the results along with a VAIS attribution token tracked by Google Analytics.
+5. GA4 interaction data is ingested nightly into BigQuery, then pushed into VAIS to improve the ranking model.
+
+---
+
+## Search Admin
+
+The [Search Admin application](https://search-admin.publishing.service.gov.uk/) allows GDS staff to insert "external links" into search — links to non-GOV.UK URLs that surface in search results.
+
+---
+
+## Known limitations
+
+- Draft content cannot be seen in search results served by Search API v1 on the draft stack.
+- Non-English content is not supported by Search API v1.

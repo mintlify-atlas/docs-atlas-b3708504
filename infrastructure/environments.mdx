@@ -1,0 +1,85 @@
+---
+title: GOV.UK environments
+description: The three GOV.UK environments from an infrastructure perspective — AWS accounts, VPCs, intended use cases, and what lives where.
+---
+
+GOV.UK has several environments with different purposes. By _environment_, we mean:
+
+- a self-contained, running instance of all the software components of GOV.UK
+- the AWS account and VPC network that hosts that instance
+- the configuration (settings) for that instance
+
+There are three GOV.UK environments hosted in AWS: **integration**, **staging**, and **production**. Individual developers also run GOV.UK locally on laptops or workstations.
+
+The [Release dashboard](https://release.publishing.service.gov.uk/) shows which application versions have been rolled out in each environment.
+
+## Environments at a glance
+
+<CardGroup cols={3}>
+  <Card title="Integration" icon="flask">
+    Used for manual and automated software testing. No availability guarantees.
+  </Card>
+  <Card title="Staging" icon="code-branch">
+    Used for verifying infrastructure changes and load testing. Front ends accessible from GDS network only.
+  </Card>
+  <Card title="Production" icon="globe">
+    Serves content to the public. Runs the released versions of all applications.
+  </Card>
+</CardGroup>
+
+## Local development
+
+Software developers working on GOV.UK generally either use [govuk-docker](https://github.com/alphagov/govuk-docker/) or run applications directly on their machines alongside local copies of the necessary databases.
+
+In future, improvements to [govuk-helm-charts](https://github.com/alphagov/govuk-helm-charts/) should make it possible to run the entire GOV.UK stack locally, making it easier for new contributors to get started and reducing friction for developers.
+
+## Integration
+
+The integration environment is used by GOV.UK product teams for:
+
+- manual software testing where automated test coverage is insufficient or where the [govuk-docker](https://github.com/alphagov/govuk-docker/) local development environment is insufficient
+- automated end-to-end and system tests ([govuk-e2e-tests](https://docs.publishing.service.gov.uk/repos/govuk-e2e-tests)) that determine whether a software release is automatically promoted to the staging environment
+
+<Note>
+  There are no guarantees about the availability of the integration environment. Support is on a best-effort basis only.
+</Note>
+
+Content editors at GDS and in other departments currently also use the integration environment as a workaround to preview certain types of content changes. This usage needs to be replaced by proper preview functionality in the Publisher applications so that all end-user usage happens in production.
+
+## Staging
+
+The staging environment is used by the GOV.UK Platform Engineering team for:
+
+- verifying changes to cluster configuration or cloud infrastructure, such as Kubernetes cluster upgrades
+
+It is used by GOV.UK product teams for:
+
+- testing major changes that need to run on a full copy of production data
+- performance and load testing
+
+The staging environment is also a gate for automatic deployment of new releases to production.
+
+<Warning>
+  Front ends in the staging environment are reachable from GDS network addresses only. If you are working outside a GDS office, connect via the VPN to view the website. Apps that require you to log in via GOV.UK Signon do not require the VPN.
+</Warning>
+
+## Production
+
+The production environment runs the versions of the applications that serve content to the general public.
+
+## Determining your current environment in code
+
+Use the `GovukEnvironment.current` method from [`govuk_app_config`](https://github.com/alphagov/govuk_app_config). It returns one of `"production"`, `"staging"`, `"integration"`, or `"local"`.
+
+```ruby
+case GovukEnvironment.current
+when "production"
+  # production-specific behaviour
+when "integration"
+  # integration-specific behaviour
+end
+```
+
+<Warning>
+  Exercise caution before writing environment-dependent code. It can lead to brittle, hard-to-test systems where certain logic only executes in specific environments (like production), making bugs difficult to detect during development or testing. Prefer feature flags or configuration-driven behaviour instead.
+</Warning>

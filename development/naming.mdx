@@ -1,0 +1,97 @@
+---
+title: Naming conventions for apps and repos
+description: How to name new applications and gems on GOV.UK, covering conventions for each application type and gem naming rules.
+---
+
+This describes how to name an application or gem on GOV.UK. It was first proposed in [RFC 63](https://github.com/alphagov/govuk-rfcs/blob/main/rfc-063-naming-new-apps-gems-on-gov-uk.md).
+
+The most important principle: **the name should be self-descriptive**. No branding, puns, or internal codenames.
+
+<Note>
+  The name of the app should be consistent across GitHub, Puppet, and the hostname. Use dashes for the URL and GitHub repo name.
+</Note>
+
+## Naming applications
+
+The [GOV.UK Service Manual has guidance on naming services](https://www.gov.uk/service-manual/design/naming-your-service) which is a useful starting point.
+
+<AccordionGroup>
+  <Accordion title="Publishing applications">
+    Applications that publish content are named **x-publisher**.
+
+    **Good examples:**
+    - `specialist-publisher`
+    - `manuals-publisher`
+
+    **Avoid:**
+    - `publisher` — too generic; gives no indication of what it publishes
+  </Accordion>
+
+  <Accordion title="Frontend applications">
+    Applications that render content to end users on GOV.UK are named **x-frontend**.
+
+    **Good examples:**
+    - `finder-frontend`
+    - `email-alert-frontend`
+
+    **Avoid:**
+    - `collections` — could be `collections-frontend`
+    - `frontend` — too generic
+  </Accordion>
+
+  <Accordion title="API applications">
+    Applications that expose an API are named **x-api**.
+
+    **Good examples:**
+    - `publishing-api`
+    - `email-alert-api`
+
+    **Avoid:**
+    - `rummager` — was renamed to `search-api` to make the purpose clear
+  </Accordion>
+
+  <Accordion title="Admin applications">
+    Applications that manage things can be named **x-manager**, **x-admin**, or **thing-doer**.
+
+    **Good examples:**
+    - `search-admin`
+    - `local-links-manager`
+    - `content-tagger`
+
+    **Avoid:**
+    - `signonotron2000` — branded, not descriptive
+    - `maslow` — named after a psychologist instead of its purpose (`needs-manager`)
+  </Accordion>
+
+  <Accordion title="Service applications">
+    Applications that listen to the publishing queue and perform background work — with no API or web interface — are named **x-service**.
+
+    **Good examples:**
+    - `email-alert-service`
+    - `cache-clearing-service`
+
+    **Avoid:**
+    - `cache-clearer` — inconsistent with the `-service` suffix convention
+  </Accordion>
+</AccordionGroup>
+
+## Naming gems
+
+Follow the official [RubyGems naming convention](http://guides.rubygems.org/name-your-gem/) alongside these GOV.UK-specific rules:
+
+- Use **underscores** to separate multiple words
+- Use the `govuk_` prefix if the gem is only relevant to projects within GOV.UK
+
+<CardGroup cols={2}>
+  <Card title="Good gem names" icon="check">
+    - `govuk_sidekiq`
+    - `govuk_content_models`
+    - `govuk_admin_template`
+    - `vcloud-edge_gateway`
+  </Card>
+  <Card title="Names to avoid" icon="x">
+    - `slimmer` — not descriptive
+    - `plek` — not descriptive
+    - `gds-sso` — should use underscores: `gds_sso` or `govuk_sso`
+  </Card>
+</CardGroup>

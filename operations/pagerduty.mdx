@@ -1,0 +1,126 @@
+---
+title: Using PagerDuty
+description: How to set up PagerDuty for on-call notifications, manage schedule overrides, and run the weekly drill.
+---
+
+Some alerts are urgent enough to warrant immediate attention, such as parts of the site becoming unavailable or large quantities of error pages being served. GOV.UK uses [PagerDuty](https://governmentdigitalservice.pagerduty.com) to escalate alerts to on-call engineers in order:
+
+1. Primary Engineer
+2. Secondary Engineer
+3. GOV.UK Senior Management Team member (may not be technical)
+
+When an alert triggers PagerDuty, someone on the escalation schedule must acknowledge it, otherwise it will be escalated further.
+
+It's the responsibility of each on-call engineer to keep their contact details up to date in PagerDuty and to confirm they are correctly scheduled in.
+
+## Setting up PagerDuty while on-call
+
+<Warning>
+  It is your responsibility to ensure you can receive calls from PagerDuty while on-call, including setting it to bypass any Do Not Disturb features on your phone.
+</Warning>
+
+<Note>
+  From 23 April 2026, you will not be able to use the PagerDuty app on a personal device unless you have accepted the [GDS BYOD policy](https://docs.google.com/document/d/1CP6VKSh5Q2ZzW7po8ehro2I-C--8Uh4y_9Ps4D46FSA/edit). It is highly recommended to use the PagerDuty app on your work mobile device. See [PagerDuty's instructions for setting up the app](https://support.pagerduty.com/main/docs/mobile-app-settings).
+</Note>
+
+### Using the mobile app (recommended)
+
+Using the PagerDuty mobile app on your work device makes it easier to ensure that incident notifications reach you. You can send a test notification by:
+
+<Steps>
+  <Step title="Open your PagerDuty profile">
+    Click your picture in PagerDuty to access your profile.
+  </Step>
+  <Step title="Go to Contact Information">
+    Click the "Contact Information" tab.
+  </Step>
+  <Step title="Send a test">
+    Click any of the "test" buttons next to your contact methods to verify notifications are working.
+  </Step>
+</Steps>
+
+### Without the mobile app
+
+If you decide not to use the mobile app, or don't have a work mobile device:
+
+<Steps>
+  <Step title="Download the PagerDuty vCard">
+    [Download the PagerDuty vCard](https://support.pagerduty.com/main/docs/notification-phone-numbers) and add it to your phone contacts. Download this periodically as the number PagerDuty uses can change.
+  </Step>
+  <Step title="Allow PagerDuty to bypass Do Not Disturb">
+    Follow the instructions for your device to allow that contact to bypass Do Not Disturb features:
+    - [Android instructions](https://support.google.com/android/answer/9069335?hl=en-GB#zippy=%2Cset-what-to-block-or-who-can-interrupt-you)
+    - [iPhone instructions](https://support.apple.com/en-gb/105112)
+
+    Note that Do Not Disturb may be set automatically based on a schedule — check that PagerDuty calls will still come through.
+  </Step>
+</Steps>
+
+## Creating a schedule override
+
+If you need to make a rota swap or cover for someone at the last minute, use the override feature in PagerDuty.
+
+See the [PagerDuty documentation on how to schedule an override](https://support.pagerduty.com/docs/edit-schedules#create-overrides) for step-by-step instructions.
+
+Once you have arranged a swap, let the Technical On-Call delivery manager know so they can confirm the updated schedule.
+
+## PagerDuty drill
+
+GOV.UK tests PagerDuty every Monday morning at 10am UTC (11am BST) to make sure it can alert engineers.
+
+The expected flow during a drill:
+
+1. The **primary in-hours engineer** receives the PagerDuty alert and escalates it to the secondary
+2. The **secondary** escalates it to "SMT escalations"
+3. The person on **SMT escalations** resolves the PagerDuty alert to prevent anyone else being phoned
+
+Prometheus fires a constant `Watchdog` alert so that developers can confirm Prometheus is integrated with Alertmanager.
+
+### Triggering the drill manually
+
+<Steps>
+  <Step title="Ask Platform Engineering to run the drill">
+    Ask someone in the `#platform-engineering` team to run the PagerDuty drill.
+  </Step>
+  <Step title="Exec onto the Alertmanager pod">
+    Log onto the production cluster, then exec onto the Alertmanager pod:
+
+    ```shell
+    kubectl exec -it alertmanager-kube-prometheus-stack-alertmanager-0 -n monitoring -- sh
+    ```
+  </Step>
+  <Step title="Create the drill alert">
+    Create the PagerDuty drill alert, updating the `--end` datetime to approximately 5 minutes from now:
+
+    ```shell
+    amtool --alertmanager.url=http://localhost:9093 alert add \
+      --end 2023-11-03T15:59:00-00:00 \
+      alertname="PagerDuty test drill. Developers: escalate this alert. SMT: resolve this alert." \
+      severity='page'
+    ```
+  </Step>
+  <Step title="Verify the alert is firing">
+    Query the alerts to confirm it is being triggered:
+
+    ```shell
+    amtool --alertmanager.url=http://localhost:9093 alert query \
+      'alertname=PagerDuty test drill. Developers: escalate this alert. SMT: resolve'
+    ```
+  </Step>
+</Steps>
+
+## Add your PagerDuty rota to Google Calendar
+
+You can sync your PagerDuty on-call schedule with Google Calendar so you can see your shifts alongside the rest of your work.
+
+<Steps>
+  <Step title="Open your on-call schedule">
+    Go to [https://governmentdigitalservice.pagerduty.com/my-on-call/month](https://governmentdigitalservice.pagerduty.com/my-on-call/month).
+  </Step>
+  <Step title="Copy the calendar feed URL">
+    On the left side, click "Export Calendar". Right-click on "WebCal Feed" and copy the link.
+  </Step>
+  <Step title="Add to Google Calendar">
+    In Google Calendar, under "Other calendars", click the plus symbol and select "From URL". Paste the WebCal feed URL and add the calendar.
+  </Step>
+</Steps>

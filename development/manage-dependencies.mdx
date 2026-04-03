@@ -1,0 +1,207 @@
+---
+title: Managing dependencies
+description: How GOV.UK manages gem and npm dependencies using Dependabot, including configuration, auto-merging, and security review practices.
+---
+
+GOV.UK is obliged to keep its software current. To help with this, GitHub's Dependabot opens automated dependency upgrade PRs. The in-house Seal tool notifies teams of unmerged Dependabot PRs, and [govuk-dependabot-merger](https://github.com/alphagov/govuk-dependabot-merger) can automatically merge certain PRs where it is safe to do so.
+
+## Responsibility
+
+Each service team is responsible for setting up and maintaining dependency management for their own repositories. This includes:
+
+- Configuring Dependabot
+- Reviewing and merging dependency PRs
+- Opting in to auto-merging where appropriate
+
+GOV.UK Platform Engineering can provide advice and additional tooling, but day-to-day ownership sits with the service team.
+
+## Auto-merging Dependabot PRs
+
+Per the [National Cyber Security Centre](https://www.ncsc.gov.uk/collection/vulnerability-management/guidance/policy-update-by-default), updates should be applied as soon as possible — ideally automatically. The [govuk-dependabot-merger](https://github.com/alphagov/govuk-dependabot-merger) service can auto-merge certain Dependabot PRs, as outlined in [RFC-167](https://github.com/alphagov/govuk-rfcs/blob/main/rfc-167-auto-patch-dependencies.md).
+
+To opt a repository in to auto-merging:
+
+<Steps>
+  <Step title="Add a configuration file">
+    Create a `.govuk_dependabot_merger.yml` file at the root of the repository. Configure it per the [govuk-dependabot-merger README](https://github.com/alphagov/govuk-dependabot-merger).
+  </Step>
+  <Step title="Add the repo to the opt-in list">
+    Add the repository to [repos_opted_in.yml](https://github.com/alphagov/govuk-dependabot-merger/blob/main/config/repos_opted_in.yml) in the govuk-dependabot-merger repository.
+  </Step>
+</Steps>
+
+## Reviewing Dependabot PRs manually
+
+When auto-merging cannot be used, follow this review process:
+
+<Steps>
+  <Step title="Read the release notes">
+    Expand the **Release notes** or **Changelog** section in the PR. Click the `CHANGELOG` link if available and read any breaking changes or upgrade instructions. Take extra care with major version bumps (e.g. `2.1.0` → `3.0.0`).
+  </Step>
+  <Step title="Review the commits (for unfamiliar or long-dormant dependencies)">
+    Expand the **Commits** section and click the "compare view" link. Verify the version bump matches the PR. Review the code for anything suspicious: use of `eval`, encoded strings, HTTP requests to non-GOV.UK domains.
+  </Step>
+  <Step title="Verify the package on its registry">
+    For Ruby, check [Rubygems](https://rubygems.org/). Verify that the `Homepage` or `Source Code` link refers back to the repo you've been reviewing. Confirm the version in the PR exists in the registry.
+  </Step>
+  <Step title="Verify the author">
+    Check that the author of the version bump commit is a regular contributor to the repository.
+  </Step>
+</Steps>
+
+<Note>
+  Traditional manual review may not provide significant security benefits against supply chain compromise. Comprehensive test coverage and security scanning are the primary safeguards. See [RFC-167](https://github.com/alphagov/govuk-rfcs/blob/main/rfc-167-auto-patch-dependencies.md#justification) for the full rationale.
+</Note>
+
+## Configuring Dependabot
+
+### Enable Dependabot on a repository
+
+Any GOV.UK developer with production access can enable Dependabot:
+
+1. Navigate to the repository on GitHub and click **Insights**
+2. Choose **Dependency graph**
+3. Select the **Dependabot** tab
+4. Click **Enable Dependabot**
+
+Then create a PR adding a `.github/dependabot.yml` configuration file.
+
+### Trigger a manual Dependabot check
+
+Go to **Insights** → **Dependency graph** → **Dependabot**, then click **Last checked X minutes ago** next to the relevant package manager. Click **Check for updates**.
+
+### Example `.github/dependabot.yml`
+
+The following configuration covers Ruby, npm, Go, Terraform, Docker, and GitHub Actions ecosystems. Most repositories will only need one or two sections.
+
+```yaml
+version: 2
+
+updates:
+  # Ruby (Bundler)
+  - package-ecosystem: bundler
+    directory: /
+    schedule:
+      interval: monthly
+      time: "10:30"
+      timezone: "Europe/London"
+    cooldown:
+      default-days: 3
+    open-pull-requests-limit: 10
+    allow:
+      - dependency-type: direct
+    groups:
+      test:
+        patterns:
+          - "rspec"
+          - "rspec-*"
+          - "simplecov"
+          - "webmock"
+          - "factory_bot*"
+      lint:
+        patterns:
+          - "rubocop"
+          - "rubocop-*"
+
+  # npm
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: monthly
+      time: "10:30"
+      timezone: "Europe/London"
+    cooldown:
+      default-days: 3
+    open-pull-requests-limit: 10
+    allow:
+      - dependency-type: direct
+    groups:
+      test:
+        patterns:
+          - "jest"
+          - "jest-*"
+          - "@types/jest"
+      lint:
+        patterns:
+          - "eslint"
+          - "eslint-*"
+          - "prettier"
+          - "standard"
+
+  # Go modules
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: monthly
+      time: "10:30"
+      timezone: "Europe/London"
+    cooldown:
+      default-days: 3
+    open-pull-requests-limit: 10
+    allow:
+      - dependency-type: direct
+
+  # Terraform and infrastructure tooling
+  - package-ecosystem: terraform
+    directory: /
+    schedule:
+      interval: monthly
+      time: "10:30"
+      timezone: "Europe/London"
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 5
+
+  # Docker base images
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: monthly
+      time: "10:30"
+      timezone: "Europe/London"
+    cooldown:
+      default-days: 7
+
+  # GitHub Actions
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+      time: "10:30"
+      timezone: "Europe/London"
+    cooldown:
+      default-days: 3
+```
+
+### Key configuration choices
+
+| Setting | Value | Reason |
+|---|---|---|
+| `interval: monthly` | `monthly` | Security updates are still raised immediately regardless of schedule. |
+| `cooldown: default-days` | `3` (code), `7` (infra) | Waits after a version is published, giving the community time to flag broken or compromised releases. Infrastructure tooling uses 7 days as changes carry more risk. |
+| `allow: dependency-type: direct` | `direct` | Only updates top-level dependencies, not transitive ones. |
+| `groups` | per-ecosystem | Bundles related dependencies (e.g. all RuboCop gems) into a single PR. |
+| `open-pull-requests-limit` | `10` | The default of 5 is easy to hit. A low cap has contributed to past incidents where security updates were blocked by the limit. |
+
+## Security
+
+Branch protection is configured for all repos with the `govuk` label. This prevents Dependabot from writing directly to `main`.
+
+## Further reading
+
+<AccordionGroup>
+  <Accordion title="Supply chain incidents and threat landscape">
+    - [tj-actions/changed-files compromise (March 2025)](https://emmer.dev/blog/pin-your-github-actions-to-protect-against-mutability/) — Post-mortem on the incident that affected 23,000+ repositories. Illustrates why mutable Git tags are a structural risk.
+    - [RFC-167: Auto-patch dependencies](https://github.com/alphagov/govuk-rfcs/blob/main/rfc-167-auto-patch-dependencies.md) — GOV.UK's rationale for why traditional manual review is insufficient against supply chain compromise.
+    - [GitHub Actions has a package manager, and it might be the worst](https://nesbitt.io/2025/12/06/github-actions-package-manager.html) — Analysis of structural gaps in GitHub Actions' dependency model.
+  </Accordion>
+  <Accordion title="Defensive practices">
+    - [Best practices for handling credentials](/infrastructure/best-practices-for-handling-credentials) — GOV.UK guidance on protecting credentials from supply chain malware.
+    - [GitHub Docs: Secure use reference for GitHub Actions](https://docs.github.com/en/actions/reference/security/secure-use) — Canonical guidance on securing workflows, including SHA pinning and minimum token permissions.
+    - [zizmor](https://github.com/woodruffw/zizmor) — Static analysis tool for GitHub Actions workflows. Scans for over-privileged tokens, injection vulnerabilities, and unpinned actions.
+  </Accordion>
+  <Accordion title="Build provenance and SLSA">
+    - [GitHub Artifact Attestations](https://docs.github.com/en/actions/concepts/security/artifact-attestations) — How to generate cryptographically verifiable build provenance.
+    - [SLSA framework](https://slsa.dev) — Supply-chain Levels for Software Artifacts, from basic provenance (Level 1) to hardened build platforms (Level 3).
+  </Accordion>
+</AccordionGroup>

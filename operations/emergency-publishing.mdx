@@ -1,0 +1,169 @@
+---
+title: Emergency publishing
+description: How to deploy and remove an emergency banner on GOV.UK for notable deaths, national emergencies, and local emergencies.
+---
+
+In emergencies, GOV.UK can display important information in a banner at the top of every page on the website.
+
+<Note>
+  There is also a non-emergency sitewide banner (the "global banner") used to convey important information that is not deemed emergency-level.
+</Note>
+
+## When to deploy an emergency banner
+
+GOV.UK publishes an emergency banner when there is:
+
+- A notable death
+- A national emergency
+- A local emergency
+
+The [GOV.UK Programme Team on-call](https://governmentdigitalservice.pagerduty.com/schedules/PCK3XB2) (also known as the Senior Management Team escalations contact) makes the decision as to whether to deploy an emergency banner.
+
+This task is expected to be actioned by a GDS content designer — from Content Operations if in office hours, or the on-call content person if out of hours. **The content designer must have GDS Admin permission in Whitehall Publisher** in order to deploy the emergency banner.
+
+## Deploy an emergency banner
+
+<Steps>
+  <Step title="Obtain the content for the banner">
+    The GOV.UK Programme Team on-call will provide:
+
+    - The **type** of emergency banner: notable death, national emergency, or local emergency
+    - **Text for the heading**
+
+    They may optionally also provide:
+
+    - Text for the short description (a sentence displayed under the heading)
+    - A URL for users to find more information (use a relative URL if it's on www.gov.uk)
+    - Alternative link text for the "More information" link
+  </Step>
+  <Step title="Deploy the banner in Whitehall Publisher">
+    Navigate to the emergency banner admin page for the appropriate environment and enter the details as provided:
+
+    - [Integration](https://whitehall-admin.integration.publishing.service.gov.uk/government/admin/emergency_banner)
+    - [Staging](https://whitehall-admin.staging.publishing.service.gov.uk/government/admin/emergency_banner)
+    - [Production](https://whitehall-admin.publishing.service.gov.uk/government/admin/emergency_banner)
+  </Step>
+  <Step title="Verify the banner is live">
+    Most GOV.UK pages have a cache `max-age` of 5 minutes. After deploying the emergency banner you should expect to see it on all GOV.UK pages within **10 minutes**.
+
+    1. Wait 1 minute to allow frontend application caches to expire.
+    2. Visit a page and add a cache-bust query string (a `?` followed by any random string) to the URL.
+    3. Ensure you are checking the correct environment (staging or production).
+    4. Wait 10 minutes, then verify the banner is visible **without** the cache-bust string.
+
+    Check that:
+
+    - The banner displays as expected
+    - The header, short description, and link text are correct
+    - The link (if applicable) works
+    - The banner is the **correct colour** — see the [banner types](#types-of-emergency-banners) below
+
+    Some useful pages to check:
+
+    - [https://www.gov.uk/](https://www.gov.uk/)
+    - [https://www.gov.uk/financial-help-disabled](https://www.gov.uk/financial-help-disabled)
+    - [https://www.gov.uk/government/organisations/hm-revenue-customs](https://www.gov.uk/government/organisations/hm-revenue-customs)
+    - [https://www.gov.uk/search](https://www.gov.uk/search)
+
+    If the banner doesn't appear, see [Troubleshooting](#troubleshooting) below.
+  </Step>
+</Steps>
+
+## Remove an emergency banner
+
+Navigate to the emergency banner admin page for the appropriate environment and press the **"Remove banner"** button:
+
+- [Integration](https://whitehall-admin.integration.publishing.service.gov.uk/government/admin/emergency_banner)
+- [Staging](https://whitehall-admin.staging.publishing.service.gov.uk/government/admin/emergency_banner)
+- [Production](https://whitehall-admin.publishing.service.gov.uk/government/admin/emergency_banner)
+
+<Warning>
+  You must have GDS Admin permission for Whitehall Publisher in order to remove the emergency banner.
+</Warning>
+
+---
+
+## Types of emergency banners
+
+<AccordionGroup>
+  <Accordion title="Death of a notable person — black banner">
+    A large **black** banner is displayed on all GOV.UK pages, including the homepage.
+
+    The wording should be the official title of the deceased and the years of their life — for example, *"His Royal Highness Henry VIII 1491 to 1547"*. The text should link to their official biography.
+  </Accordion>
+  <Accordion title="National emergency (level 1 / category 2) — red banner">
+    A large **red** banner is displayed on all GOV.UK pages, including the homepage.
+  </Accordion>
+  <Accordion title="Localised large-scale emergency (level 2 / category 1) — green banner">
+    A large **green** banner is displayed on all GOV.UK pages, including the homepage.
+
+    <Note>These incidents will not be processed outside of business hours.</Note>
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Troubleshooting
+
+### Background
+
+- The emergency banner data is stored in a **Redis key** as a Ruby hash (key-value map).
+- A [controller in Whitehall](https://github.com/alphagov/whitehall/blob/main/app/controllers/admin/emergency_banner_controller.rb) sets or removes this Redis key.
+- The [govuk_web_banners](https://github.com/alphagov/govuk_web_banners) gem, included in frontend apps, reads the data from Redis and renders the banner. It caches the Redis result for up to 60 seconds.
+
+### The banner is not showing / not clearing
+
+Usually this is because some cached content has not yet expired — either in the frontend rendering apps or in your browser.
+
+<Steps>
+  <Step title="Check the environment">
+    Double-check that you are looking at the correct environment.
+  </Step>
+  <Step title="Use a fresh private/incognito window">
+    Browser state such as cookies or cache can interfere with testing.
+  </Step>
+  <Step title="Check www-origin">
+    Check whether the banner appears on `www-origin`:
+
+    - [Staging](https://www-origin.staging.publishing.service.gov.uk)
+    - [Production](https://www-origin.production.publishing.service.gov.uk)
+
+    If the banner works on origin but not on www.gov.uk, wait 5 minutes and try again. You can also [purge the CDN cache](/operations/purge-cache) if necessary, though this should not normally be required.
+  </Step>
+  <Step title="Inspect the Redis key">
+    Open a Rails console for the Frontend application:
+
+    ```bash
+    kubectl -n apps exec -it deploy/frontend -- rails c
+    ```
+
+    Retrieve the value of the Redis key:
+
+    ```ruby
+    Redis.new.hgetall("emergency_banner")
+    ```
+
+    If a banner is active, you should see output like:
+
+    ```ruby
+    => {
+      "campaign_class"=>"notable-death",
+      "heading"=>"The heading",
+      "short_description"=>"The short description",
+      "link"=>"https://www.gov.uk",
+      "link_text"=>"More information about the emergency"
+    }
+    ```
+
+    If there is no banner, the value should be an empty hash:
+
+    ```ruby
+    => {}
+    ```
+  </Step>
+  <Step title="Force a redeploy or clear the frontend memcache">
+    Try forcing a redeploy of the app responsible for rendering the page you are checking.
+
+    Alternatively, clear the frontend memcache by logging into the AWS console for the appropriate environment, finding **frontend-memcached-govuk** under Elasticache › Memcached clusters, and pressing the **Reboot** button.
+  </Step>
+</Steps>

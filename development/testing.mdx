@@ -1,0 +1,91 @@
+---
+title: How GOV.UK tests applications
+description: An overview of GOV.UK's testing layers, covering smoke tests, healthchecks, contract tests, and unit and integration tests.
+---
+
+GOV.UK uses several layers of testing to give confidence that applications are working correctly in all environments.
+
+```
+Consumer (Unit tests) <---> API (Contract Test) <---> Provider (Unit tests) <---> ...
+```
+
+<CardGroup cols={2}>
+  <Card title="Continuous Deployment checks" icon="rocket">
+    Run after every deployment in a live environment. Includes Smokey smoke tests and application healthchecks.
+  </Card>
+  <Card title="Continuous Integration checks" icon="git-branch">
+    Run against every pull request. Includes contract (Pact) tests and unit/integration tests.
+  </Card>
+</CardGroup>
+
+<Info>
+  Recommended reading: [A new standard of testing for GOV.UK](https://technology.blog.gov.uk/2021/10/08/a-new-standard-of-testing-for-gov-uk/)
+</Info>
+
+## Continuous Deployment checks
+
+### Smokey
+
+[Smokey](https://github.com/alphagov/smokey) is the smoke test suite for GOV.UK. Smoke tests are "probes" — they monitor real environments for transient failures rather than being run in temporary isolated environments.
+
+Smokey serves two roles:
+
+<AccordionGroup>
+  <Accordion title="Probes">
+    A full run of Smokey is triggered every few minutes in every environment. If it fails, a Slack alert prompts an engineer to investigate. Many probes are currently unreliable so they do not page people, but they are monitored via Sentry to identify patterns.
+  </Accordion>
+  <Accordion title="Surrogate end-to-end tests">
+    A subset of probes is run as part of the Continuous Deployment pipeline. These can fail for reasons unrelated to the app being deployed, which is why they are considered a "surrogate" form of testing rather than true end-to-end tests.
+  </Accordion>
+</AccordionGroup>
+
+<Tip>
+  Read [how and when to write Smoke tests](https://github.com/alphagov/smokey/blob/main/docs/writing-tests.md) in the Smokey repository.
+</Tip>
+
+### Application healthchecks
+
+Healthchecks are a fast way to verify that an app is running correctly at the end of a deployment. They can also check that the app can reach the infrastructure it depends on.
+
+Web apps expose a `/healthcheck/ready` endpoint via the `govuk_app_config` gem which checks whether the app can serve requests and connect to its infrastructure (e.g. a database).
+
+Apps that deploy automatically all the way to production must have a healthcheck that covers connectivity to **all systems the app uses to read or write data** — databases, remote file systems, remote caches, and so on.
+
+<Note>
+  Service apps (those with no web server) are checked differently: we verify the process is running, and apps should fail to start if they cannot connect to their required infrastructure.
+</Note>
+
+## Continuous Integration checks
+
+### Contract tests
+
+Contract tests (also called Pact tests) verify that APIs exposed by one app (the "provider") are compatible with the other apps that use those APIs ("consumers"). A set of shared tests is run by both the provider and each consumer.
+
+Contract tests sit in the middle of the testing chain:
+
+```
+Consumer (Unit tests) <---> API (Contract Test) <---> Provider (Unit tests)
+```
+
+Apps that deploy continuously all the way to production must have contract tests for each endpoint that has multiple internal consumer apps.
+
+<Warning>
+  The contract testing chain cannot test incremental state changes across multiple apps — for example, all the API calls involved in publishing a document end-to-end. End-to-end tests are the alternative for this kind of coverage, but they are expensive to run and maintain.
+</Warning>
+
+See [Pact testing](/development/pact-testing) for full details on writing and running contract tests.
+
+### Unit, integration, and other tests
+
+Most GOV.UK apps are built with Ruby on Rails. Use the GOV.UK-standard [testing tools and strategies](/development/conventions-for-rails-applications#testing-strategies) for these apps.
+
+<Info>
+  Some older apps use the Minitest framework — they were written before GOV.UK adopted RSpec. Migration to RSpec is possible but should be avoided unless there is a compelling reason, due to the effort involved.
+</Info>
+
+Apps that deploy continuously all the way to production must also meet these thresholds:
+
+- At least **one JavaScript test** if the app uses JavaScript.
+- **Code coverage above 95%**.
+
+GOV.UK uses [GitHub Actions](/development/github) to run CI tests.

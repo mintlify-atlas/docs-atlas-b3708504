@@ -1,0 +1,98 @@
+---
+title: Prometheus, Grafana and Alertmanager
+description: How GOV.UK uses Prometheus for metrics collection, Grafana for dashboards, and Alertmanager for routing alerts.
+---
+
+The Prometheus Operator installs and configures Prometheus, Alertmanager, and Grafana on GOV.UK's Kubernetes clusters through Custom Resource Definitions.
+
+Access to all three tools is managed via Dex, using GitHub team membership.
+
+## Prometheus
+
+[Prometheus](https://github.com/prometheus/prometheus?tab=readme-ov-file#----prometheus) is a systems monitoring and alerting toolkit. Its features include:
+
+- A **time-series database** specifically optimised for graphing data over time
+- **PromQL** — a DSL for querying the stored data
+- An **HTTP pull model** using Rack middleware that configures Prometheus to scrape metrics from an HTTP endpoint. Many GOV.UK applications expose metrics via the [govuk_app_config](https://github.com/alphagov/govuk_app_config/blob/main/lib/govuk_app_config/govuk_prometheus_exporter.rb) gem — for example, [Finder Frontend's search metrics](https://github.com/alphagov/finder-frontend/blob/main/config/initializers/prometheus.rb)
+- A **push gateway** model for use when an individual job (such as a cronjob) generates data that requires graphing or monitoring
+
+You can query the Prometheus database directly via the [Prometheus UI](https://prometheus.eks.production.govuk.digital/query) using [PromQL](https://prometheus.io/docs/prometheus/latest/querying/basics/#time-series-selectors), though many people find it easier to use Grafana for this.
+
+## Grafana
+
+Grafana provides a frontend for visualising Prometheus data. Access the production Grafana instance at [https://grafana.eks.production.govuk.digital/dashboards](https://grafana.eks.production.govuk.digital/dashboards).
+
+### Creating a new dashboard
+
+<Steps>
+  <Step title="Go to the Grafana dashboards page">
+    Visit [https://grafana.eks.production.govuk.digital/dashboards](https://grafana.eks.production.govuk.digital/dashboards).
+  </Step>
+  <Step title="Create a new dashboard">
+    Create a new dashboard and save it in the **Experiments** folder.
+  </Step>
+  <Step title="Add a visualisation">
+    Click **Add visualization** and select **Prometheus** as the data source.
+  </Step>
+  <Step title="Write your PromQL query">
+    Enter your PromQL query in the Metrics browser field. See the tips below for guidance.
+  </Step>
+  <Step title="Promote to a permanent dashboard (optional)">
+    If you want to make the dashboard permanent, select **Export** → **Export as JSON**, copy the output, and open a PR in `govuk-helm-charts`. See [prior art](https://github.com/alphagov/govuk-helm-charts/pull/3100/files) for an example.
+  </Step>
+</Steps>
+
+### Grafana tips
+
+<AccordionGroup>
+  <Accordion title="Use Builder mode for a more approachable UI">
+    When creating a new visualisation, select **Builder** instead of **Code**. Builder mode provides a drop-down UI that lets you see available label names, making it easier to discover the metrics that exist.
+  </Accordion>
+  <Accordion title="Understand the 'job' label">
+    The label filter `job` refers to the **name of the application**. For example, `job="frontend"` filters to metrics from the frontend application.
+  </Accordion>
+  <Accordion title="Use the Explain toggle">
+    The **Explain** toggle in the query editor provides recommendations and syntax help. It is very useful when you're unfamiliar with PromQL.
+  </Accordion>
+  <Accordion title="Explore existing dashboards for starting points">
+    If you can find an existing dashboard panel that is similar to what you want, you can obtain its PromQL expression to use as a starting point. Open the panel, click the three dots in the top-right corner, then select **Explore**.
+  </Accordion>
+</AccordionGroup>
+
+## Alertmanager
+
+Alertmanager reads data directly from Prometheus and sends notifications when metrics cross predefined thresholds. Alert rules are defined in [govuk-helm-charts](https://github.com/alphagov/govuk-helm-charts/tree/main/charts/monitoring-config/rules). See the [Prometheus Operator manual](https://prometheus-operator.dev/docs/api-reference/api/#monitoring.coreos.com/v1alpha1.AlertmanagerConfig) for guidance on writing these rules.
+
+<Note>
+  The [Alertmanager UI](https://alertmanager.eks.production.govuk.digital/#/alerts) only shows alerts that are **currently firing**, not all configured alerts. To see all configured alerts, use the [Alerts tab in the Prometheus UI](https://prometheus.eks.production.govuk.digital/alerts?search=Search-).
+</Note>
+
+### Alert severity levels
+
+Each alert rule is labelled with a severity level (in decreasing order of urgency):
+
+<AccordionGroup>
+  <Accordion title="Page — immediate response required" defaultOpen={true}>
+    Used for urgent, severe conditions requiring an immediate response even out-of-hours. These alerts are forwarded to [PagerDuty](/operations/pagerduty).
+
+    **Examples**: database is out of disk space, service is completely unavailable.
+  </Accordion>
+  <Accordion title="Critical — address within business hours">
+    Used for conditions that should be addressed promptly within usual business hours but do not require immediate out-of-hours attention.
+
+    **Examples**: disk usage at 90% with less than a day of capacity remaining.
+  </Accordion>
+  <Accordion title="Warning — early indicator">
+    Used as an early indicator of abnormal conditions that might require investigation during business hours if they persist.
+
+    **Examples**: disk usage at 70%.
+  </Accordion>
+</AccordionGroup>
+
+<Tip>
+  Alerts for purely informational or debugging conditions should be avoided. Alert fatigue reduces the effectiveness of the monitoring system.
+</Tip>
+
+## Watchdog alert
+
+Prometheus fires a constant `Watchdog` alert that is always active. This serves as a health check to confirm that Prometheus is correctly integrated with Alertmanager — if the Watchdog alert stops firing, something is wrong with the monitoring pipeline itself.

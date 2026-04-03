@@ -1,0 +1,204 @@
+---
+title: Conventions for Rails applications
+description: The current conventions and preferences for building Ruby on Rails applications on GOV.UK, covering tooling, configuration, code organisation, and testing.
+---
+
+The majority of GOV.UK applications are built using Ruby on Rails. Over the years a wide variety of patterns have been used across many applications. The goal is for GOV.UK apps to be consistent in their implementation, with differences only in domain logic.
+
+This document describes the **current** conventions and preferences. It is intended as a guide for teams creating new applications and for teams iterating existing ones. When creating a new application, also consult the guides on [setting up a new Rails application](/development/setting-up-new-rails-app) and [naming conventions](/development/naming).
+
+<Note>
+  GOV.UK's use of Rails follows the conventions of the framework itself. Where GOV.UK apps differ from Rails defaults (such as using RSpec instead of Minitest), the choices align with common industry practices.
+</Note>
+
+## GOV.UK supporting gems
+
+GOV.UK publishes a number of gems that address common needs across Ruby/Rails applications. Using them maintains consistency across the programme and enables common improvements to be rolled out centrally.
+
+<CardGroup cols={2}>
+  <Card title="gds-api-adapters" icon="arrow-right-arrow-left" href="https://github.com/alphagov/gds-api-adapters">
+    Provides common patterns to communicate between GOV.UK applications.
+  </Card>
+  <Card title="gds-sso" icon="lock" href="https://github.com/alphagov/gds-sso">
+    Integration with Signon for user and application authentication.
+  </Card>
+  <Card title="govuk_app_config" icon="gear" href="https://github.com/alphagov/govuk_app_config">
+    Common configuration for logging, error handling, and metric reporting.
+  </Card>
+  <Card title="govuk_message_queue_consumer" icon="inbox" href="https://github.com/alphagov/govuk_message_queue_consumer">
+    Consistent means to consume from the RabbitMQ queue that the Publishing API broadcasts to.
+  </Card>
+  <Card title="govuk_publishing_components" icon="puzzle" href="https://github.com/alphagov/govuk_publishing_components">
+    Framework for embedding common GOV.UK interface components and creating app-specific ones.
+  </Card>
+  <Card title="govuk_sidekiq" icon="clock" href="https://github.com/alphagov/govuk_sidekiq">
+    Common configuration for using Sidekiq with GOV.UK infrastructure.
+  </Card>
+  <Card title="govuk_schemas" icon="file-text" href="https://github.com/alphagov/govuk_schemas">
+    Helper utilities for interfacing with content schemas in the Publishing API.
+  </Card>
+  <Card title="govuk_test" icon="flask" href="https://github.com/alphagov/govuk_test">
+    Configuration and dependencies for headless browser testing.
+  </Card>
+  <Card title="plek" icon="map-pin" href="https://github.com/alphagov/plek">
+    Utility tool to determine base URLs for GOV.UK applications in the current environment.
+  </Card>
+  <Card title="rubocop-govuk" icon="shield-check" href="https://github.com/alphagov/rubocop-govuk">
+    GOV.UK linting rules for Ruby, Rails, RSpec, and Rake.
+  </Card>
+</CardGroup>
+
+If an app needs to deviate from conventions introduced by these gems, open an issue or iterate the gem itself rather than working around it locally.
+
+## Tooling choices
+
+### Linting
+
+See the [configure linting](/development/configure-linting) guide for the full linting setup.
+
+### Gemfile organisation
+
+A well-organised `Gemfile` is consistent, logical, and concise. Follow these conventions:
+
+- **First gem must be `"rails"`** with an absolute version number (e.g. `"6.0.3.4"` not `"~> 6.0"`). Pinning Rails exactly prevents other gems from silently upgrading it.
+- Declare gems needed in all environments after Rails, followed by environment-specific `group` blocks.
+- **Avoid pinning gem versions** unless there is a specific reason. The `Gemfile.lock` already records exact versions in use.
+- If you do pin a version, **leave a comment explaining why**:
+
+```ruby
+gem "elasticsearch", "~> 6" # We need a 6.x release to interface with Elasticsearch 6
+```
+
+### Data storage
+
+<AccordionGroup>
+  <Accordion title="Relational databases">
+    Use **PostgreSQL** with **ActiveRecord** for non-specialist database needs. Use `db/seeds.rb` to populate the database for development and test environments.
+  </Accordion>
+  <Accordion title="Key-value stores and queues">
+    Use **Redis** for key-value datastore access such as distributed caches. For queue-based communication between applications, use **RabbitMQ** via the Bunny gem, or AWS **AmazonMQ**.
+  </Accordion>
+  <Accordion title="File storage">
+    Use **Amazon S3** for file storage local to an application. Where file storage needs to be associated with a database record, use **ActiveStorage**.
+  </Accordion>
+</AccordionGroup>
+
+### Background job processing
+
+The preferred approach is **ActiveJob** with **Sidekiq**, configured via the `govuk_sidekiq` gem. ActiveJob is preferred because of its tighter integration with Rails components such as ActionMailer.
+
+For scheduled background jobs, use **sidekiq-scheduler**.
+
+### JavaScript package management
+
+Use **Yarn** for managing JavaScript packages in Rails applications. Rails integrates directly with Yarn, providing default tasks and automating some workflows. Avoid using NPM directly.
+
+### Frontend assets
+
+GOV.UK applications use the Rails **asset pipeline** for precompiling assets. We aspire to retire the asset pipeline and encourage decoupling wherever possible, but are currently constrained by coupling in the components gem.
+
+### Sending emails
+
+**GOV.UK Notify** is the preferred approach for sending email. Use the **mail-notify** gem to integrate Notify with ActionMailer.
+
+## Configuration
+
+### Follow 12-factor app conventions
+
+GOV.UK Rails applications aim to follow [12-factor](https://12factor.net/) conventions:
+
+- Use environment variables for all environmental configuration (e.g. `ENV["DATABASE_URL"]` rather than hardcoded database config).
+- Maintain close parity between development and production environments — use PostgreSQL in all environments, not SQLite for development.
+- Avoid requiring additional configuration on the serving machine where possible.
+
+### Inject secrets with environment variables
+
+GOV.UK does not use Rails encrypted credentials. Instead, secrets are injected as environment variables. This is because the same app runs in "production" mode across multiple environments (integration, staging, production) each requiring different secrets.
+
+For dummy secrets in dev and test environments, configure them in the respective `config/environments/*.rb` files.
+
+<Warning>
+  Do not use `config/secrets.yml` — it is deprecated in modern Rails.
+</Warning>
+
+### API project timezone
+
+By default, GOV.UK apps use London time via `govuk_app_config`. For API projects, consider overriding this to UTC to keep the API un-opinionated about time zones.
+
+Do not change `config.active_record.default_timezone` — this should remain as UTC so that the database stays timezone-neutral.
+
+### API-only mode
+
+For applications that do not serve requests to a web browser, configure the Rails application in [API-only mode](https://guides.rubyonrails.org/api_app.html). This removes unnecessary middleware and components.
+
+If a web browser interface is also needed, consider creating a separate frontend application (e.g. `email-alert-frontend` alongside `email-alert-api`).
+
+### Microcopy and internationalisation
+
+When non-developers need to edit copy in an application, use **Rails Internationalization (I18n)** to abstract copy outside of application code — even for English-only applications. Store these files in `/config/locales` as per Rails convention. Use these files only for copy, not for configuration.
+
+### Error handling
+
+GOV.UK Rails applications should anticipate failure and respond gracefully with GOV.UK branded error pages. Frontend applications handle errors automatically; admin applications require explicit configuration. See Content Publisher for an example of implementing this with the GOV.UK admin layout.
+
+## Organising your code
+
+Follow the prevailing convention for what belongs in `/app` vs `/lib`:
+
+- **`/app`** — default Rails components (controllers, models, views, helpers, jobs) and classes with a common purpose and consistent interface used throughout the application.
+- **`/lib`** — classes that don't logically fit in `/app`, complex business logic (e.g. link expansion in the Publishing API), and Rake tasks.
+
+Do not create an `/app/lib` directory — it causes confusion with `/lib`.
+
+Configuration files (typically YAML) should live in `/config`.
+
+## Documenting decisions
+
+Create a `/docs` directory to store application documentation linked from the README.
+
+For recording architectural decisions, use **Architectural Decision Records (ADRs)** in `/docs/adr`. See [an example ADR from Content Publisher](https://github.com/alphagov/content-publisher/blob/main/docs/adr/0002-use-local-datastore.md).
+
+## Testing strategies
+
+GOV.UK aims for test suites that are fast to run, easy to read, and test things consistently at different abstractions (unit, integration, and functional).
+
+### Feature and system testing
+
+Use RSpec Rails' **system specs** (the modern equivalent of feature specs) via `govuk_test`'s Capybara configuration when testing from the perspective of an end user.
+
+GOV.UK has adopted the [FutureLearn readable feature test](https://web.archive.org/web/20230320165008/https://www.futurelearn.com/info/blog/how-we-write-readable-feature-tests-with-rspec) approach — it provides the readability of Cucumber without the difficulty in tracing which code performs each step.
+
+### Testing controllers
+
+Use **request specs** for testing controllers. This replaces controller specs and reflects the direction introduced in Rails 5.
+
+### Testing utilities
+
+The preferred testing framework is **rspec-rails**. Additional tools commonly used with RSpec:
+
+<CardGroup cols={2}>
+  <Card title="webmock" icon="ban">
+    Stub HTTP requests. For stubbing GOV.UK inter-app communication, prefer the helper methods in `gds-api-adapters`.
+  </Card>
+  <Card title="SimpleCov" icon="chart-bar">
+    Monitor code coverage. Apps that deploy continuously must exceed 95% coverage.
+  </Card>
+  <Card title="factory_bot_rails" icon="database">
+    Provide fixtures and test data.
+  </Card>
+  <Card title="Climate Control" icon="sliders">
+    Modify environment variables within tests.
+  </Card>
+</CardGroup>
+
+Use `ActiveSupport::Testing::TimeHelpers` for time manipulation and `rspec-mocks` (included with RSpec) for test doubles.
+
+Merge `spec_helper.rb` and `rails_helper.rb` into a **single `spec_helper.rb`** file to avoid complexity from two configuration files. Configure `--require spec_helper` in `.rspec` to avoid prefixing every test file with `require "spec_helper"`.
+
+### Testing JavaScript
+
+The conventional framework for JavaScript testing in GOV.UK Rails applications is **Jasmine**, run via the `jasmine-browser-runner` NPM package in a headless Chrome browser.
+
+<Warning>
+  The `jasmine` Ruby gem has been deprecated and should no longer be used. Use `jasmine-browser-runner` instead.
+</Warning>

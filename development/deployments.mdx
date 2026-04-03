@@ -1,0 +1,163 @@
+---
+title: How deployments work on GOV.UK
+description: The full GOV.UK deployment process — from GitHub Actions through Argo CD to Kubernetes — including deployment rules, freezes, and manual deployment procedures.
+---
+
+GOV.UK applications can be deployed to one of three environments: Integration, Staging, and Production.
+
+Deployments are performed through a CI/CD pipeline powered by GitHub Actions, [Argo CD](https://argo-cd.readthedocs.io/en/stable/), and [Argo Workflows](https://argo-workflows.eks.production.govuk.digital/workflows/apps). Most apps use continuous deployment (CD), but manual deployment is also supported.
+
+The [Release app](https://release.publishing.service.gov.uk) shows the currently deployed versions of each app in each environment, including deployment status, deployment notes, and whether a deployment freeze is in effect.
+
+## Deployment rules
+
+<Warning>
+  Deploy between **9:30am–5pm** (4pm on Fridays). Do not deploy outside these hours without good reason.
+</Warning>
+
+- If your code includes undeployed changes by other developers, ask them before deploying.
+- Check for deploy notes in [Release](https://release.publishing.service.gov.uk) or an active code freeze before deploying.
+- Announce risky deployments in `#govuk-technical-on-call`.
+
+## Types of deployment
+
+### Continuous deployment
+
+Most GOV.UK apps are continuously deployed. Merging a PR to `main` triggers a fully automated pipeline that deploys through Integration → Staging → Production, with smoke tests at each stage.
+
+To enable continuous deployment for an app, set `promote_deployment: true` in the [image tag configuration](#deployment-configuration) for Integration and Staging. This should only be done for apps that meet the requirements in [RFC 128](https://github.com/alphagov/govuk-rfcs/blob/main/rfc-128-continuous-deployment.md). Once enabled, add the app to the [list of continuously deployed apps in the Release app](https://github.com/alphagov/release/blob/main/data/continuously_deployed_apps.yml).
+
+### Manual deployment
+
+You can manually deploy any app to any environment by triggering the Deploy workflow. Manual deployments are **never** automatically promoted to other environments, even for continuously deployed apps.
+
+<Tabs>
+  <Tab title="GitHub web interface">
+    <Steps>
+      <Step title="Open the Actions tab">
+        Go to the app's repository on GitHub and click **Actions**.
+      </Step>
+      <Step title="Select the Deploy workflow">
+        Find and click the **Deploy** workflow in the left sidebar.
+      </Step>
+      <Step title="Trigger the workflow">
+        Click **Run workflow**. Enter `gitRef` (a branch name, release tag, or commit SHA) and the target `environment`. Click **Run workflow**.
+      </Step>
+    </Steps>
+  </Tab>
+  <Tab title="GitHub CLI">
+    ```shell
+    gh workflow run -R "alphagov/${REPO}" deploy.yml \
+      -F environment=${ENVIRONMENT} \
+      -F gitRef=${GIT_REF}
+    ```
+
+    After triggering, verify the deployment in Argo CD:
+
+    1. Open the [Argo CD dashboard](https://argo.eks.integration.govuk.digital/applications) for your app and environment
+    2. Click **Details** and verify the `ANNOTATIONS` include your commit SHA
+    3. [Nudge Argo to sync faster](#nudge-argo-to-sync-faster) if needed
+    4. Confirm the Deployment pod shows a green tick
+  </Tab>
+</Tabs>
+
+## The full deployment process
+
+This is what happens when a new app version is deployed end-to-end:
+
+<Steps>
+  <Step title="A new commit is pushed to main">
+    GitHub Actions CI is triggered automatically on successful merge. The test suite and any configured linting and security scans run.
+  </Step>
+
+  <Step title="GitHub Actions builds and pushes a Docker image">
+    The container is tagged with the Git commit SHA and published to the [GitHub Container Registry (GHCR)](https://ghcr.io).
+  </Step>
+
+  <Step title="The release workflow creates a Git tag">
+    The [`release.yml` shared workflow](https://github.com/alphagov/govuk-infrastructure/blob/main/.github/workflows/release.yml) runs in GitHub Actions and adds a Git tag for the release. Release tags follow the format `v` followed by a sequential number.
+  </Step>
+
+  <Step title="The deploy workflow is triggered">
+    The [deploy workflow](https://github.com/alphagov/whitehall/actions/workflows/deploy.yml) is triggered — automatically for continuously deployed apps or manually via the GitHub UI or CLI.
+  </Step>
+
+  <Step title="A webhook triggers Argo Workflows">
+    The [`deploy-image` Argo Workflow](https://github.com/alphagov/govuk-helm-charts/blob/main/charts/argo-services/templates/workflows/deploy-image/workflow.yaml) runs. It:
+
+    - Updates the app's image tag YAML file in [`app-config/image-tags`](https://github.com/alphagov/govuk-helm-charts/tree/main/charts/app-config/image-tags)
+    - Creates a branch and automatically merges it into `main` (no PR is raised)
+    - Notifies the [Release app](https://release.publishing.service.gov.uk) of the new deployment
+  </Step>
+
+  <Step title="Argo CD detects the change and syncs">
+    [Argo CD](https://argo.eks.integration.govuk.digital/applications) detects the updated image tag. Using the [App of Apps pattern](https://argo-cd.readthedocs.io/en/stable/operator-manual/declarative-setup/#app-of-apps) via the [`app-config` chart](https://github.com/alphagov/govuk-helm-charts/tree/main/charts/app-config), it re-renders Helm charts and triggers a rolling update in Kubernetes (zero-downtime where possible).
+  </Step>
+
+  <Step title="Argo CD runs sync hooks">
+    - **PreSync hook** (if configured): builds frontend assets and uploads them to S3 via a Kubernetes Job
+    - **Sync hook**: runs database migrations (if defined) using the [migration Job template](https://github.com/alphagov/govuk-helm-charts/blob/main/charts/generic-govuk-app/templates/dbmigration-job.yaml)
+
+    <Warning>
+      Migrations are not guaranteed to complete before new containers start. Ensure all database migrations are backward-compatible with the previous version of the app.
+    </Warning>
+  </Step>
+
+  <Step title="Post-sync smoke tests run">
+    The [post-sync workflow](https://github.com/alphagov/govuk-helm-charts/blob/main/charts/argo-services/templates/workflows/post-sync/workflow.yaml) runs [end-to-end smoke tests](https://github.com/alphagov/govuk-e2e-tests). If tests pass and `promote_deployment: true` is set, the `deploy-image` workflow is triggered for the next environment. This continues environment by environment: Integration → Staging → Production.
+  </Step>
+</Steps>
+
+## Deployment configuration
+
+GOV.UK uses [Helm charts](https://helm.sh/docs/topics/charts/) to define and manage Kubernetes resources for each app. These are stored in the [`govuk-helm-charts` repo](https://github.com/alphagov/govuk-helm-charts). The source of truth for deployed versions is the image tag configuration in the [`app-config` Helm chart](https://github.com/alphagov/govuk-helm-charts/tree/main/charts/app-config/image-tags).
+
+The image tag configuration for each app specifies:
+
+| Field | Description |
+|---|---|
+| `image_tag` | The initial image tag for the application |
+| `automatic_deploys_enabled` | Whether deployment freezes are in effect (`false` to freeze) |
+| `promote_deployment` | Whether deployment is automatically triggered in the next environment (Integration → Staging → Production) |
+
+## Deployment freezes
+
+Code freezes block automatic deployment and are applied by setting `automatic_deploys_enabled: false` in `govuk-helm-charts` for the corresponding app.
+
+Manual deploys remain possible during a freeze. To deter accidental manual deployments during a freeze:
+
+1. Check **Freeze deployments?** in the Release app to add a visual label
+2. Notify `#govuk-developers` with `@channel` and email `govuk-tech-members@digital.cabinet-office.gov.uk`
+3. Avoid merging PRs during a freeze unless urgent
+
+## Troubleshooting
+
+### A deployment doesn't reach production
+
+1. Check `#govuk-deploy-alerts` for updates
+2. In [Argo Workflows](https://argo-workflows.eks.production.govuk.digital), click **View workflow** (if you hit a login error, log out and back in)
+3. In the Argo Workflows UI, click the failed step → **LOGS**
+4. If it's a flaky test failure, click **RESUBMIT** to retry the workflow
+
+### Nudge Argo to sync faster
+
+Argo periodically polls for image tag changes. To force a faster sync:
+
+1. Visit [app-config in Argo](https://argo.eks.integration.govuk.digital/applications/cluster-services/app-config)
+2. Click **Refresh** — this syncs all apps with updated tags
+3. Navigate to the relevant app in Argo and click **Sync**
+4. Wait for all Kubernetes resources to finish promoting
+
+### Argo CD access by environment
+
+<CardGroup cols={2}>
+  <Card title="Integration" icon="code" href="https://argo.eks.integration.govuk.digital/">
+    Requires your GitHub account to be in the [GOV.UK team](https://github.com/orgs/alphagov/teams/gov-uk).
+  </Card>
+  <Card title="Staging" icon="flask" href="https://argo.eks.staging.govuk.digital/">
+    Requires [production access](/infrastructure/rules-for-getting-production-access).
+  </Card>
+  <Card title="Production" icon="globe" href="https://argo.eks.production.govuk.digital/">
+    Requires [production access](/infrastructure/rules-for-getting-production-access).
+  </Card>
+</CardGroup>

@@ -1,0 +1,182 @@
+---
+title: Getting started with GOV.UK Kubernetes
+description: How to set up the required tools, authenticate with AWS, and access the GOV.UK EKS clusters using kubectl.
+---
+
+There are three GOV.UK EKS clusters — integration, staging, and production — corresponding to the three GOV.UK environments and AWS accounts. This guide walks you through setting up all the tools you need and connecting to a cluster for the first time.
+
+<Info>
+  This guide assumes you have already completed the [get started developing on GOV.UK](/getting-started/get-started) steps, including getting AWS access.
+</Info>
+
+## Step 1: Install the required tools
+
+You need four tools to work with the GOV.UK Kubernetes platform: `kubectl`, `helm`, `argo`, and `gds-cli` / `aws-vault`.
+
+<Steps>
+  <Step title="Install kubectl">
+    The [kubectl command line tool](https://kubernetes.io/docs/reference/kubectl/overview/) lets you control Kubernetes clusters.
+
+    ```bash
+    brew install kubectl
+    ```
+
+    Verify the installation:
+
+    ```bash
+    kubectl version --client
+    ```
+
+    You should see output like:
+
+    ```text
+    Client Version: version.Info{Major:"1", Minor:"22", GitVersion:"v1.22.1", ...}
+    ```
+  </Step>
+
+  <Step title="Install Helm">
+    [Helm](https://helm.sh/docs/) is the package manager for Kubernetes.
+
+    ```bash
+    brew install helm
+    ```
+
+    Verify the installation:
+
+    ```bash
+    helm version
+    ```
+
+    You should see output like:
+
+    ```text
+    version.BuildInfo{Version:"v3.8.0", GitCommit:"d14138609b01886f544b2025f5000351c9eb092e", ...}
+    ```
+  </Step>
+
+  <Step title="Install Argo CLI">
+    [Argo Workflows](https://argoproj.github.io/argo-workflows/) is the workflow engine for Kubernetes. You use the Argo CLI to manage Argo Workflows.
+
+    ```bash
+    brew install argo
+    ```
+
+    Verify the installation:
+
+    ```bash
+    argo version
+    ```
+
+    You should see output like:
+
+    ```text
+    argo: v3.2.8+8de5416.dirty
+      BuildDate: 2022-02-05T05:15:13Z
+      GoVersion: go1.17.6
+      Platform: darwin/amd64
+    ```
+  </Step>
+
+  <Step title="Install gds-cli and aws-vault">
+    If you completed the GOV.UK getting-started guide, you already have both of these installed.
+
+    If not, install them using Homebrew:
+
+    ```bash
+    brew install alphagov/gds/gds-cli
+    brew install --cask aws-vault
+    ```
+
+    Verify each installation:
+
+    ```bash
+    gds --version
+    aws-vault --version
+    ```
+  </Step>
+</Steps>
+
+## Step 2: Obtain AWS credentials
+
+Choose the AWS IAM role that is appropriate for your task, then obtain credentials using `gds-cli`:
+
+```bash
+eval $(gds aws govuk-<environment>-<role> -e --art 8h)
+export AWS_REGION=eu-west-1
+```
+
+Where:
+- `<environment>` is `integration`, `staging`, or `production`
+- `<role>` is `readonly`, `developer`, `fulladmin`, or `platformengineer`
+
+<Tip>
+  By default, use the `readonly` role — it gives you all the information you need without elevated privileges. Switch to `developer` only when you need to make changes such as restarting pods.
+</Tip>
+
+## Step 3: Configure kubectl for the first time
+
+If this is your first time accessing a cluster, add it to your kubectl configuration:
+
+```bash
+aws eks update-kubeconfig --name govuk
+```
+
+To make it easier to switch between clusters, rename the new context to match the environment name. Edit the `name` field of the last context in `~/.kube/config`. For example, for the staging environment, set `name` to `govuk-staging`.
+
+Set the current context:
+
+```bash
+kubectl config use-context <environment>
+```
+
+Set the default namespace so you don't need to specify `-n apps` on every command:
+
+```bash
+kubectl config set-context --current --namespace=apps
+```
+
+Check you can access the cluster:
+
+```bash
+kubectl get deploy/frontend
+```
+
+You should see output like:
+
+```text
+NAME       READY   UP-TO-DATE   AVAILABLE   AGE
+frontend   2/2     2            2           399d
+```
+
+## Switching clusters
+
+Once you have configured each cluster, switching between them is straightforward.
+
+Get new credentials for the target environment:
+
+```bash
+eval $(gds aws govuk-<environment>-<role> -e --art 8h)
+export AWS_REGION=eu-west-1
+```
+
+Switch kubectl context:
+
+```bash
+kubectl config use-context <environment>
+```
+
+List all available contexts:
+
+```bash
+kubectl config get-contexts
+```
+
+## Working across multiple clusters simultaneously
+
+If you need to work across multiple clusters without juggling environment variables, use:
+
+```bash
+gds aws govuk-[environment]-developer -- kubectl --context govuk-[environment] -n apps get pods
+```
+
+This prefixes each command with the correct AWS credentials inline, so you can run commands against different environments in the same shell session.

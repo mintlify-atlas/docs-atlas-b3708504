@@ -1,0 +1,101 @@
+---
+title: Kubernetes platform overview
+description: An overview of GOV.UK's Elastic Kubernetes Service (EKS) clusters, the platform engineering team, Argo CD, Helm charts, and how apps run on Kubernetes.
+---
+
+The GOV.UK website and publishing platform are hosted on [Kubernetes](https://kubernetes.io/) clusters on Amazon Web Services (AWS), using [Elastic Kubernetes Service](https://aws.amazon.com/eks/) (EKS).
+
+Kubernetes is a widely-used, open-source [container orchestration system](https://cloud.google.com/discover/what-is-container-orchestration) for managing containerised workloads. It is designed for automation and emphasises declarative configuration and immutable infrastructure.
+
+## What Kubernetes provides
+
+<CardGroup cols={2}>
+  <Card title="Workload scheduling" icon="server">
+    Efficiently and automatically fits workloads into available compute resources across nodes.
+  </Card>
+  <Card title="Self-healing deployments" icon="heart-pulse">
+    Resilient deployments that automatically restart failed containers and reschedule unhealthy pods.
+  </Card>
+  <Card title="Service discovery and load balancing" icon="network-wired">
+    Automatically exposes services and distributes traffic across healthy pod instances.
+  </Card>
+  <Card title="Automated rollouts and rollbacks" icon="rotate-left">
+    Controlled, zero-downtime deployments with the ability to roll back to a previous version.
+  </Card>
+  <Card title="Resource quotas and isolation" icon="shield">
+    Per-namespace resource quotas and isolation of compute resources between workloads.
+  </Card>
+  <Card title="Secrets and config management" icon="key">
+    Managed storage and injection of sensitive configuration and secrets into running pods.
+  </Card>
+</CardGroup>
+
+## Cluster architecture
+
+The GOV.UK Kubernetes platform runs three EKS clusters — one per environment — in AWS `eu-west-1` (Ireland):
+
+| Cluster | Environment | AWS account |
+|---|---|---|
+| `govuk` (integration) | Integration | `govuk-integration` |
+| `govuk` (staging) | Staging | `govuk-staging` |
+| `govuk` (production) | Production | `govuk-production` |
+
+Each cluster uses [managed node groups](https://docs.aws.amazon.com/eks/latest/userguide/managed-node-groups.html) backed by EC2 Auto Scaling groups. The cluster autoscaler add-on automatically adjusts node count based on demand.
+
+## Platform cluster add-ons
+
+The GOV.UK Kubernetes platform cluster uses the following add-ons:
+
+<AccordionGroup>
+  <Accordion title="External Secrets">
+    The [External Secrets add-on](https://github.com/alphagov/govuk-infrastructure/blob/main/terraform/deployments/cluster-services/external_secrets.tf) retrieves secrets from [AWS Secrets Manager](https://aws.amazon.com/secrets-manager/) and makes them available to GOV.UK applications as standard [Kubernetes Secret objects](https://kubernetes.io/docs/concepts/configuration/secret/).
+
+    See the [External Secrets documentation](https://external-secrets.io/) for more detail.
+  </Accordion>
+  <Accordion title="ExternalDNS">
+    The [ExternalDNS add-on](https://github.com/alphagov/govuk-infrastructure/blob/main/terraform/deployments/cluster-services/external_dns.tf) creates and manages DNS records in [AWS Route 53](https://aws.amazon.com/route53/) for exposed Kubernetes services automatically.
+  </Accordion>
+  <Accordion title="AWS Load Balancer Controller">
+    The [AWS Load Balancer Controller add-on](https://github.com/alphagov/govuk-infrastructure/blob/main/terraform/deployments/cluster-services/aws_lb_controller.tf) creates and manages AWS load balancers based on Kubernetes `Ingress` objects in the cluster.
+  </Accordion>
+  <Accordion title="Cluster Autoscaler">
+    The [Cluster Autoscaler add-on](https://github.com/alphagov/govuk-infrastructure/blob/main/terraform/deployments/cluster-services/cluster_autoscaler.tf) automatically adjusts cluster size by adding worker nodes when capacity is low and removing them when the cluster has spare capacity.
+  </Accordion>
+  <Accordion title="Dex OpenID Connect Provider">
+    The [Dex OpenID Connect Provider](https://github.com/alphagov/govuk-infrastructure/blob/main/terraform/deployments/cluster-services/dex.tf) is a federated identity provider. GOV.UK uses it to manage single sign-on to services in the cluster, including Grafana dashboards and Argo CD.
+  </Accordion>
+  <Accordion title="AWS EBS CSI Driver">
+    The [AWS EBS CSI Driver](https://github.com/alphagov/govuk-infrastructure/blob/main/terraform/deployments/cluster-services/aws_ebs_csi_driver.tf) allows EKS clusters to manage the lifecycle of Amazon EBS volumes for persistent volumes.
+  </Accordion>
+</AccordionGroup>
+
+## User authentication
+
+To authenticate users, the GOV.UK Kubernetes platform cluster uses [AWS EKS Access Entries](https://github.com/alphagov/govuk-infrastructure/tree/main/terraform/deployments/cluster-access).
+
+Each access entry is associated with a user's AWS IAM role and grants that user permissions inside the cluster via [Kubernetes RBAC](https://kubernetes.io/docs/reference/access-authn-authz/rbac/).
+
+User IAM roles are managed in the [`govuk-user-reviewer` repository](https://github.com/alphagov/govuk-user-reviewer/blob/main/config/govuk_tech.yml).
+
+### Access roles
+
+| Role | Access level |
+|---|---|
+| `readonly` | Read-only access to AWS and the `apps` and `datagovuk` namespaces. No access to secrets or S3 objects. |
+| `developer` | Read-write access to most things in `apps` and `datagovuk` namespaces. Can read secrets with `2ndline/` or `govuk/` prefixes. |
+| `fulladmin` | Read-write cluster-admin access to everything across all namespaces, including secrets. |
+| `platformengineer` | Cluster-admin access for use by Platform Engineers without requiring an approval process. |
+
+<Warning>
+  Usage of the `fulladmin` role is monitored. You should only use it when the `developer` or `platformengineer` roles are insufficient.
+</Warning>
+
+## How apps are deployed
+
+GOV.UK apps are deployed using [Helm charts](https://helm.sh/) and managed via [Argo CD](https://argo-cd.readthedocs.io/). The [`govuk-helm-charts` repository](https://github.com/alphagov/govuk-helm-charts) holds all chart configuration.
+
+The `generic-govuk-app` Helm chart provides the standard template for GOV.UK applications. Per-environment configuration (such as replica counts, environment variables, and resource limits) is specified in `values-{environment}.yaml` files in the `app-config` chart.
+
+Image tags for each application and environment are tracked in the `image-tags` directory of `govuk-helm-charts`. When a new image is pushed to the container registry, Argo CD picks up the updated tag and deploys it automatically.
+
+The [Release dashboard](https://release.publishing.service.gov.uk/) shows which application versions have been rolled out in each environment.

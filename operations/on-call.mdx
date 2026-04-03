@@ -1,0 +1,180 @@
+---
+title: GOV.UK Technical On-Call Support
+description: How the GOV.UK on-call rota works, what to do during your shift, and the rules for primary and secondary roles.
+---
+
+GOV.UK developers are part of an on-call rota to keep GOV.UK running 24/7. Engineers are enrolled onto the in-hours rota first, then onto the out-of-hours rota once they've built up enough experience.
+
+<Warning>
+  In a hurry? See [So, you're having an incident](/operations/incident-what-to-do) for the immediate response guide.
+</Warning>
+
+## On-call charter
+
+- Attend the Monday morning handover, centred around the [GOV.UK Technical On-Call Trello board](https://trello.com/b/M7UzqXpk)
+- Prepare for your shift by following the on-call checklist below
+- Be available to be phoned during your allocated shift
+- Be able to be online to start investigating a problem within half an hour of being notified
+- Don't worry if you're not able to answer the phone immediately — that's why there is more than one person on-call
+- Nobody is expected to understand every part of GOV.UK — you don't need to know how to fix every issue on your own
+- Logs are not as important as being available — if you need to lose some logs in order to bring the site back up, that's a good trade-off to make
+
+## On-call checklist
+
+Complete these steps when starting an on-call shift.
+
+<Steps>
+  <Step title="Review the incident process">
+    Ensure you're familiar with [GOV.UK's incident process](/operations/incident-what-to-do).
+  </Step>
+  <Step title="Confirm PagerDuty is set up">
+    Confirm that you've [set up PagerDuty correctly and can receive notifications](/operations/pagerduty#setting-up-and-using-pagerduty-while-on-call).
+  </Step>
+  <Step title="Confirm Production Admin access">
+    Confirm you have full Production Admin access. You should see `production_admin_access` next to your name in [govuk-user-reviewer](https://github.com/alphagov/govuk-user-reviewer/blob/main/config/govuk_tech.yml).
+  </Step>
+  <Step title="Confirm AWS access">
+    Confirm you can access AWS over both the web console and CLI.
+  </Step>
+  <Step title="Confirm GCP access">
+    Confirm you can access GCP using the web console and the `gcloud` CLI.
+  </Step>
+  <Step title="Confirm Statuspage access">
+    Confirm you can access [GOV.UK's Statuspage account](https://manage.statuspage.io/pages/xcz7hfscrbjs/incidents).
+  </Step>
+  <Step title="Confirm Zendesk access">
+    Ensure you can log into Zendesk.
+  </Step>
+  <Step title="Confirm Notify dashboard access">
+    Confirm you can access the Notify dashboard.
+  </Step>
+  <Step title="Know SMT escalation contacts">
+    Know how to contact the rest of SMT if the on-call SMT is unavailable.
+  </Step>
+</Steps>
+
+### Optional checklist items
+
+- [Add the PagerDuty rota to your Google Calendar](/operations/pagerduty#add-your-pagerduty-rota-to-google-calendar)
+- Ensure you can connect to the VPN (useful for connecting to Staging during an incident)
+- Make sure you have an up-to-date local copy of the [Developer Docs](https://github.com/alphagov/govuk-developer-docs/) repository
+- Have the phone numbers of other people on your shift saved in your phone, including whoever is on Escalations (available from PagerDuty)
+- Set Slack to notify you for every new message in `#govuk-incident` by clicking "Details", "Change notifications" and selecting "Every new message"
+
+### After your shift
+
+- Complete the tech support [feedback form](https://forms.gle/6k5YfDqbQyeXTXYs7)
+- Get paid by following the [documented process on the GDS Wiki](https://sites.google.com/digital.cabinet-office.gov.uk/the-gds-wiki/info-for-employees/gds-guides/miscellaneous/out-of-hours-allowance)
+
+## When are you added to the rota?
+
+When you have passed probation, you will be drafted onto the in-hours on-call rota, unless you and your head of community have agreed you can opt out.
+
+You will need to arrange [Production Admin access](/infrastructure/rules-for-getting-production-access) in advance of your first allocated shift.
+
+## Rules for primary, secondary and on-call
+
+<AccordionGroup>
+  <Accordion title="Starting as secondary (in-hours)">
+    Engineers start as a Secondary on the in-hours shift. After two shifts as a Secondary, they'll start filling the Primary in-hours role, with some exceptions based on role.
+  </Accordion>
+  <Accordion title="Moving to out-of-hours on-call">
+    After filling the Primary in-hours role, engineers start filling the out-of-hours on-call rota as a Primary. After a couple of Primary out-of-hours shifts, they'll start taking out-of-hours Secondary shifts. Engineers who are new to on-call should be paged first and escalate to the Secondary, for the experience.
+  </Accordion>
+  <Accordion title="Role-specific policies">
+    - **Backend developers and SREs**: Expected to be on both in-hours and out-of-hours rotas, unless their head of community agrees to an opt-out.
+    - **Frontend developers**: Expected to be on the in-hours rota. Not expected to be on the out-of-hours rota.
+    - **Junior technologists**: Expected on the in-hours rota only. Can be a Secondary but won't be a Primary.
+    - **Technologist apprentices**: No expectation to do technical on-call shifts. Can request to be added to the secondary in-hours role at their Line Manager's discretion after obtaining Production Admin access.
+  </Accordion>
+</AccordionGroup>
+
+## Shift swaps, working patterns and sickness
+
+If you need to swap your shift, it's your responsibility to ensure adequate cover is in place.
+
+<CardGroup cols={2}>
+  <Card title="Swapping a day or two" icon="calendar">
+    Arrange a swap for those specific days with another developer. Ensure delivery managers are aware.
+  </Card>
+  <Card title="Swapping a whole shift" icon="arrows-rotate">
+    Arrange a full shift swap with another developer from your team and let the Technical On-Call delivery manager know so they can update the PagerDuty schedule.
+  </Card>
+  <Card title="Sick during your shift" icon="circle-exclamation">
+    Message the delivery manager and the `#govuk-technical-on-call` Slack channel.
+  </Card>
+  <Card title="Non-standard working patterns" icon="clock">
+    Let the Technical On-Call team know if your patterns are not compatible with a 9:30am–5:30pm shift so they can find extra support. If you don't work a 5-day week, talk to your delivery manager.
+  </Card>
+</CardGroup>
+
+### Away days and all-staff events
+
+Before attending an all-staff event or team away-day that could keep you away from your laptop for extended periods, try to swap your shift with someone who is not attending.
+
+If you attend such an event while on-call, you must:
+- Check Slack regularly (at least hourly)
+- Be prepared to drop what you're doing and work on anything urgent
+- Be contactable by phone to respond quickly to PagerDuty alerts
+
+## Things that may trigger an alert
+
+### Automated monitoring
+
+GOV.UK uses [PagerDuty](/operations/pagerduty) for automated monitoring. A [PagerDuty drill](/operations/pagerduty#pagerduty-drill) runs every Monday morning at 10am UTC (11am BST).
+
+There are two sources of automated PagerDuty alerts:
+
+<AccordionGroup>
+  <Accordion title="Alertmanager alerts">
+    Any alert rule with `severity: page` will cause PagerDuty to be notified. Current examples include:
+
+    - Travel Advice or Drug and Medical Device emails not going out
+    - Overdue publications in Whitehall
+    - Scheduled publications in Whitehall not queued
+    - High error ratio for requests to Router
+    - Low disk space on Redis instances
+
+    See the full up-to-date list by [searching govuk-helm-charts for `severity: page`](https://github.com/search?q=repo%3Aalphagov%2Fgovuk-helm-charts%20severity%3A%20page).
+  </Accordion>
+  <Accordion title="Pingdom alerts">
+    Pingdom downtime checks notify PagerDuty directly, independent of GOV.UK's internal monitoring. They are useful when network access to all machines running GOV.UK is down. Checks are configured with:
+
+    - Down threshold: 30 seconds
+    - Check interval: 1 minute
+    - Alert sent after: 5 minutes
+
+    Checks cover: Assets (`assets.publishing.service.gov.uk`), Bouncer canary, GOV.UK homepage, S3 mirror (London) and S3 Mirror Replica (Ireland).
+  </Accordion>
+</AccordionGroup>
+
+### Phone calls from people
+
+Members of GOV.UK's SMT may phone you if they've been contacted by other parts of government. These calls will generally come from whoever is on the 'SMT Escalations' rota contact number.
+
+### Emergency publishing
+
+The GOV.UK on-call escalations contact will call you to carry this out. See the [deploy an emergency banner](/operations/emergency-publishing) documentation for more information.
+
+### Updating the homepage
+
+You might be asked to update the homepage promotion slots to highlight important information on GOV.UK.
+
+## Responding to alerts
+
+### Automated monitoring
+
+If you're available to investigate, acknowledge the alert in PagerDuty to prevent the next person being phoned.
+
+Try to diagnose the problem. If you understand it, there's no need to escalate. If you're unsure, it's better to escalate the alert in PagerDuty.
+
+If you escalate, stay online to support the other person and build your understanding. If a problem is escalated to you, explain what you're doing to the person who escalated it.
+
+If the technical people on-call don't understand what's going on, the final escalation goes to a senior member of GOV.UK who can decide how serious the problem is and contact others if required.
+
+### Phone calls from people
+
+If you're phoned by someone who works on GOV.UK, it's likely because:
+
+- There's a serious issue with the site which someone else in government has noticed
+- Government has decided to do [emergency publishing](/operations/emergency-publishing)

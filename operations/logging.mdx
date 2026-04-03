@@ -1,0 +1,123 @@
+---
+title: How logging works on GOV.UK
+description: Architecture of GOV.UK's logging pipeline — from application containers through Filebeat, Logstash, and Elasticsearch to Kibana in Logit.
+---
+
+GOV.UK sends its application logs, origin HTTP request logs, and [Kubernetes events](https://kubernetes.io/docs/reference/kubernetes-api/cluster-resources/event-v1/) to managed ELK stacks hosted by [Logit.io](https://logit.io/), a software-as-a-service provider. Each environment has its own ELK stack in Logit.
+
+<Note>
+  To view logs, see [Viewing logs in Logit](/operations/logit).
+</Note>
+
+<Info>
+  [Fastly CDN request logs](https://docs.publishing.service.gov.uk/manual/query-cdn-logs.html) use a different system because of the much higher data rates involved and are not stored in Logit.
+</Info>
+
+## Architecture overview
+
+There are two parallel logging pipelines on GOV.UK:
+
+<CardGroup cols={2}>
+  <Card title="Application log delivery" icon="file-lines">
+    Containers write to stdout/stderr → Kubernetes writes to node log files → Filebeat ships to Logstash → Elasticsearch stores and indexes → Kibana for querying.
+  </Card>
+  <Card title="Kubernetes Events delivery" icon="circle-nodes">
+    The `kubernetes-events-shipper` (Fluentbit) reads from the Kubernetes Events API and writes directly to Elasticsearch → Kibana for querying.
+  </Card>
+</CardGroup>
+
+## Components in the application log pipeline
+
+### Application container
+
+The application container, or a sidecar/adapter container such as the nginx reverse proxy, writes log lines to stdout or stderr.
+
+Log lines can be structured (JSON) or unstructured (arbitrary text).
+
+<Warning>
+  Application workloads in GOV.UK's Kubernetes clusters run with `readOnlyRootFilesystem: true` and must not write logs anywhere other than stdout/stderr. Only logs written to stdout/stderr will be collected by the logging system.
+</Warning>
+
+### Kubernetes worker node
+
+The container runtime (`containerd`) and `kubelet` on the worker node are responsible for:
+
+- Writing workload containers' stdout/stderr streams to files in `/var/log/containers`
+- Rotating those log files to prevent running out of disk space
+
+### Filebeat
+
+[Filebeat](https://www.elastic.co/guide/en/beats/filebeat/current/filebeat-overview.html) runs as a [DaemonSet](https://kubernetes.io/docs/concepts/workloads/controllers/daemonset/) in the `cluster-services` namespace on each Kubernetes worker node.
+
+Filebeat is responsible for:
+
+- Finding and tailing log files on the local filesystem
+- Applying transformations such as parsing JSON-formatted log lines and dropping unwanted fields
+- Sending logs to Logstash at Logit over TLS
+
+Filebeat is installed by a Helm chart via Terraform, with its [configuration](https://github.com/alphagov/govuk-infrastructure/blob/main/terraform/deployments/cluster-services/filebeat.yml) also managed using Terraform.
+
+### Logstash
+
+[Logstash](https://www.elastic.co/guide/en/logstash/current/introduction.html) is a log ingestion pipeline — essentially an ETL system for logs. It is hosted by Logit.io.
+
+Logstash is responsible for:
+
+- Receiving streams of log messages from each node's Filebeat process via TLS over the internet
+- Parsing and transforming log messages, for example to conform to the [Elastic Common Schema](https://www.elastic.co/guide/en/ecs/current/index.html)
+- Loading the logs into Elasticsearch for storage and indexing
+
+## Components in the Kubernetes Events pipeline
+
+### Kubernetes Events API
+
+The Kubernetes Events API is exposed by the Kubernetes API server, which is part of the EKS control plane managed by AWS. It exposes all [Kubernetes events](https://kubernetes.io/docs/reference/kubernetes-api/cluster-resources/event-v1/) that occur within the EKS cluster.
+
+### Fluentbit
+
+The [Fluentbit](https://fluentbit.io/) daemon runs as a [StatefulSet](https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/) in the `cluster-services` namespace. It is deployed by the [kubernetes-events-shipper Helm chart](https://github.com/alphagov/govuk-helm-charts/tree/main/charts/kubernetes-events-shipper).
+
+Fluentbit is responsible for:
+
+- Watching the Kubernetes Events API
+- Keeping track of which events have already been sent to Elasticsearch
+- Sending events to Elasticsearch at Logit
+
+Kubernetes Events are stored in Logit in a separate set of indexes that all begin with the prefix `kubernetes-events-`. An index pattern is already created in Kibana in every environment to query these indexes.
+
+## Shared components
+
+### Elasticsearch
+
+[Elasticsearch](https://www.elastic.co/what-is/elasticsearch) is the storage and retrieval system that underpins the logging stack. It is responsible for:
+
+- Storing log data
+- Indexing stored logs for efficient search and retrieval
+- Running queries and returning results to Kibana
+
+### Kibana
+
+[Kibana](https://www.elastic.co/what-is/kibana) is the user interface for viewing and querying logs. It:
+
+- Renders the web UI
+- Parses user queries written in Lucene/KQL into Elasticsearch queries
+- Queries the Elasticsearch indices
+- Displays the results
+
+See [Viewing logs in Logit](/operations/logit) for how to access Kibana, and [Using Kibana](/operations/kibana) for useful queries.
+
+## Vulnerability scanner noise in logs
+
+Occasionally you may see log entries that look suspicious — for example, entries with path traversal patterns in field values:
+
+```text
+http_request_duration_seconds_count{
+  action="1",
+  container="app",
+  controller="../../../../../etc/passwd",
+  endpoint="metrics",
+  ...
+}
+```
+
+This type of entry often originates from external vulnerability scanners and is not necessarily a cause for alarm. However, you should consider how such activity ended up leaking into your logs and whether there is anything you should do to prevent it.

@@ -1,0 +1,166 @@
+---
+title: Get started developing on GOV.UK
+description: A step-by-step setup guide for new technical staff joining the GOV.UK programme at GDS.
+---
+
+This guide is for new technical staff — developers and technical architects — joining the GOV.UK programme at [GDS](https://gds.blog.gov.uk/about/). It does not apply to Digital Identity, Digital Services Platforms or other GDS programmes.
+
+<Info>
+  If you are having trouble with any step, ask your colleagues in the [#govuk-developers](https://gds.slack.com/archives/CAB4Q3QBW) Slack channel.
+</Info>
+
+## Before you start
+
+You will need to know who your tech lead is — some steps require their involvement.
+
+If your team does not have a tech lead, or you are the tech lead, contact the Lead Developer in your area or email the [GOV.UK senior tech team](/getting-started/ask-for-help).
+
+You should have a GDS "developer build" laptop with full admin access. Verify this by running:
+
+```sh
+sudo whoami
+```
+
+It should prompt for your local account password and print `root`. If you do not have admin access, file a ticket with the IT helpdesk and copy your line manager.
+
+## Setup steps
+
+<Steps>
+  <Step title="Install the Xcode command-line tools">
+    Run the following in your terminal:
+
+    ```sh
+    xcode-select --install
+    ```
+  </Step>
+
+  <Step title="Install the Homebrew package manager">
+    1. Download the latest `.pkg` from the [Homebrew releases page](https://github.com/Homebrew/brew/releases/).
+    1. Double-click the downloaded file and complete the installer steps.
+  </Step>
+
+  <Step title="Fill out your Slack profile">
+    You should already have access to Slack. If not, speak to your line manager.
+
+    [Update your Slack profile's title field](https://slack.com/intl/en-gb/help/articles/204092246-Edit-your-profile) to include:
+
+    - your job role
+    - the team you are working on
+    - the name of your organisation, if you are not directly employed by GDS or Cabinet Office
+  </Step>
+
+  <Step title="Set up your AWS IAM user account">
+    1. [Request an AWS user account](https://request-an-aws-user.digital.cabinet-office.gov.uk/user).
+    1. You will receive an email when your account is created.
+    1. Follow the instructions in the email to sign into the `gds-users` AWS account for the first time.
+    1. [Enable Multi-factor Authentication (MFA)](https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_mfa_enable_virtual.html#enable-virt-mfa-for-iam-user) for your IAM user.
+
+    <Warning>
+      You must specify your email address as the MFA device name.
+    </Warning>
+
+    If you have a Yubikey, you should [use it as your MFA device for AWS](https://docs.publishing.service.gov.uk/manual/setup-a-yubikey.html#set-up-as-an-mfa-device-for-aws).
+  </Step>
+
+  <Step title="Set up your GitHub account">
+    1. [Log into your existing GitHub account](https://github.com/login) or [create a new one](https://github.com/signup).
+    1. [Add your GDS email address to your GitHub account](https://docs.github.com/en/account-and-profile/setting-up-and-managing-your-github-user-account/managing-email-preferences/adding-an-email-address-to-your-github-account). This can be in addition to your personal email address.
+    1. [Generate an SSH key](https://docs.github.com/en/authentication/connecting-to-github-with-ssh/generating-a-new-ssh-key-and-adding-it-to-the-ssh-agent).
+    1. [Add the SSH key to your GitHub account](https://docs.github.com/en/github/authenticating-to-github/adding-a-new-ssh-key-to-your-github-account).
+    1. Verify that your key works:
+
+    ```sh
+    ssh -T git@github.com
+    ```
+
+    1. Configure your name and email for git commits:
+
+    ```sh
+    git config --global user.email "your.name@digital.cabinet-office.gov.uk"
+    git config --global user.name "Your Name"
+    ```
+  </Step>
+
+  <Step title="Get permissions for AWS, GitHub and other third-party services">
+    Permissions to GOV.UK's AWS, GitHub, Fastly and PagerDuty accounts are managed by the [govuk-user-reviewer](https://github.com/alphagov/govuk-user-reviewer) private repository. You won't be able to see this repo until you are added to the alphagov GitHub organisation.
+
+    Ask your tech lead to follow the [instructions in govuk-user-reviewer](https://github.com/alphagov/govuk-user-reviewer#adding-users) to grant you access.
+
+    For [Sentry](https://sentry.io/), your tech lead should manually add you via the Sentry UI. Once added, [sign in using your GDS Google account](https://sentry.io/auth/login/).
+  </Step>
+
+  <Step title="Install and configure the GDS CLI">
+    <Note>
+      You must be a member of the [alphagov GitHub organisation](https://github.com/alphagov/) (see the previous step) before proceeding.
+    </Note>
+
+    GOV.UK uses `gds-cli` for AWS access. Follow the [installation and configuration instructions](https://github.com/alphagov/gds-cli) in the repo's README.
+  </Step>
+
+  <Step title="Connect to the GDS VPN">
+    <Note>
+      This step may not be necessary if you are a contractor. Ask your tech lead.
+    </Note>
+
+    If you are outside the office or on GovWiFi, you must connect to the GDS VPN to access some internal Cabinet Office services (such as SOP and the intranet).
+
+    <Tabs>
+      <Tab title="GDS-issued MacBook">
+        Follow the [GDS guidance on how to sign into the GDS VPN using Google credentials](https://docs.google.com/document/d/1O1LmLByDLlKU4F1-3chwS8qddd2WjYQgMaaEgTfK5To/edit).
+      </Tab>
+      <Tab title="Bring Your Own Device (BYOD)">
+        Follow the [VPN guide for BYOD](https://docs.google.com/document/d/150JX1xiWdXY29ahcYUMb05Si-hEAZvtkGAKojT9Rjis/edit#).
+      </Tab>
+    </Tabs>
+  </Step>
+
+  <Step title="Set up GOV.UK Docker">
+    GOV.UK uses a Docker-based environment for local development called [GOV.UK Docker](https://github.com/alphagov/govuk-docker).
+
+    Follow the [installation instructions in the govuk-docker repository](https://github.com/alphagov/govuk-docker#installation).
+
+    <Tip>
+      If you are a frontend developer, you may prefer [alternative approaches to local development](https://docs.publishing.service.gov.uk/manual/local-frontend-development.html) that avoid GOV.UK Docker.
+    </Tip>
+  </Step>
+
+  <Step title="Set up tools to use the GOV.UK Kubernetes clusters">
+    Follow the [instructions for getting started with the GOV.UK Kubernetes clusters](https://docs.publishing.service.gov.uk/kubernetes/get-started/).
+  </Step>
+
+  <Step title="Get Signon accounts">
+    [Signon](https://github.com/alphagov/signon) controls access to the GOV.UK publishing applications.
+
+    Ask your tech lead to create:
+
+    - a **Superadmin** privileged account in [integration Signon](https://signon.integration.publishing.service.gov.uk/users/invitation/new)
+    - a **Normal** account in [production Signon](https://signon.publishing.service.gov.uk/users/invitation/new) with access to the **Release** app only
+
+    Production Signon accounts are automatically copied to the staging environment overnight, so you will have staging access the following day.
+  </Step>
+
+  <Step title="Get familiar with the Release app">
+    [Release](https://release.publishing.service.gov.uk/) is the application used to track deployments and determine which branch or tag is deployed to each environment.
+
+    Your tech lead will have granted you access to the Release app in the previous step.
+  </Step>
+
+  <Step title="Talk to your tech lead about other supporting services">
+    Depending on your role and team, you may also need access to:
+
+    - **Logit** — for reading application and request logs (new developers typically need access to integration logs)
+    - **Zendesk** — for working with user support tickets
+    - **Google Analytics** — for analysing trends in user behaviour (most new developers won't need this at first)
+    - **Terraform** — for reviewing and applying infrastructure changes
+
+    Your tech lead will know which ones you need and can arrange access.
+  </Step>
+</Steps>
+
+## What to do next
+
+Now that you have completed the setup process, review the following:
+
+- [Architectural deep-dive of GOV.UK](/getting-started/architecture-deep-dive) — understand how the platform works end to end
+- [Learn how GOV.UK works](/getting-started/learn-govuk) — overview of the technology stack and publishing system
+- [GOV.UK environments](/getting-started/environments) — understand integration, staging and production

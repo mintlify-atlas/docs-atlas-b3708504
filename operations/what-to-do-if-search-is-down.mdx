@@ -1,0 +1,92 @@
+---
+title: What to do if search is down
+description: Runbook for diagnosing and recovering from a GOV.UK search outage, covering both Search API v2 (Vertex AI Search) and Search API v1 (Elasticsearch).
+---
+
+As described in [How GOV.UK search works](/operations/govuk-search), there are two search stacks on GOV.UK. This runbook provides debugging steps to take when someone reports that "search is down".
+
+<Note>
+  If you are already confident the outage is caused by GCP or Google Vertex AI Search, skip directly to the "Contact Google support if Vertex is implicated" step below.
+</Note>
+
+---
+
+## Step 1: Identify what exactly is broken
+
+Searches on `/search/all` **with a query parameter** are sent to Search API v2 and Google Vertex AI Search. Searches **without a query parameter** are sent to Search API v1 (Elasticsearch). A quick way to determine which stack is implicated is to test both cases and see if the behaviour differs.
+
+### Check error rates for site search (v2)
+
+The [GOV.UK Search Grafana dashboard](https://grafana.eks.production.govuk.digital/d/govuk-search/gov-uk-search?orgId=1&from=now-24h&to=now&timezone=browser) visualises metrics for site search. The error rate is normally close to or at 0%. A high error rate here suggests Search API v2 or Vertex AI Search is implicated — skip to [If site search is unavailable](#if-site-search-is-unavailable).
+
+### Check error rates for Search API v1
+
+Check the [application dashboard for Search API v1](https://grafana.eks.production.govuk.digital/d/app-requests/app3a-request-rates-errors-durations?orgId=1&from=now-30m&to=now&timezone=browser&var-namespace=apps&var-app=search-api-v2&var-app=search-api&var-error_status=$__all&refresh=1m) to see if it is serving a high number of errors.
+
+### Rule out a broader frontend issue
+
+Pages that display search results are dynamic and cannot be mirrored. An incident involving a rendering application failure is often spotted first on search pages, even when search itself is not the cause. To rule this out, check:
+
+- [Complain about your council](https://www.gov.uk/complain-about-your-council) — uses site search, rendered by **Frontend**
+- [Guidance and Regulation finder](https://www.gov.uk/search/guidance-and-regulation) — uses Search API v1, rendered by **Finder Frontend**
+
+If **both** of these pages fail to load, it is highly unlikely that both search products have failed simultaneously. A broader infrastructure or rendering application issue is the more likely cause.
+
+---
+
+## If site search is unavailable
+
+<Steps>
+  <Step title="Check Sentry and Kibana for errors">
+    Check for unexpected errors in [Sentry](/operations/sentry) and [Kibana](/operations/kibana) that might help identify whether the problem is in Search API v2 or in Google Vertex AI Search.
+  </Step>
+  <Step title="Investigate the type of alert">
+    **Degradation of service alerts**
+
+    Check [Grafana](/operations/prometheus-grafana-and-alertmanager) for degradation of service alerts. Look for high error rates or latency spikes in the search dashboards.
+
+    **Synchronisation errors**
+
+    Sentry is also used to catch synchronisation errors — failures when new content is pushed to the Vertex AI Search datastore. A high number of synchronisation errors means new or updated content is failing to reach the datastore, rather than failing to appear in search results.
+
+    See [Search synchronisation errors](/operations/fix-out-of-date-search-indices) for debugging steps.
+
+    **`DiscoveryEngine::InternalError`**
+
+    Search API v2 raises a `DiscoveryEngine::InternalError` when it receives an error from Vertex AI Search. To find these in Kibana, search for the Rails logger message `"Did not get search results"`. A high volume of these suggests a problem with Vertex, which should be raised with Google support.
+  </Step>
+  <Step title="Contact Google support if Vertex is implicated">
+    If the evidence points to a Google Vertex AI Search outage, raise a critical support case via the [Google Cloud Console](https://console.cloud.google.com/support). Contact your tech lead or the GOV.UK Platform Engineering team for the GCP project details.
+  </Step>
+</Steps>
+
+---
+
+## If site search is returning bad results
+
+Search result relevance is tuned by a combination of:
+
+1. **Boosts and demotions** applied at the [serving configuration level](https://github.com/alphagov/govuk-infrastructure/blob/main/terraform/deployments/search-api-v2/serving_config_global_default.tf#L8-L14)
+2. **Recency boosts** applied at the application level at query time in [Search API v2](https://github.com/alphagov/search-api-v2/blob/main/app/services/discovery_engine/query/news_recency_boost.rb)
+3. **Model training** from user interaction (GA4) data sent to Vertex AI Search from BigQuery, three times daily
+
+Candidate causes of reduced search result quality include recent changes to the serving configuration, or a failure of the [user event data import](https://github.com/alphagov/search-api-v2/blob/main/lib/tasks/user_events.rake). However, these are unlikely to cause a catastrophically bad impact.
+
+---
+
+## Monitoring dashboards and tools
+
+<CardGroup cols={2}>
+  <Card title="GOV.UK Search Grafana" icon="chart-line" href="https://grafana.eks.production.govuk.digital/d/govuk-search/gov-uk-search?orgId=1&from=now-24h&to=now&timezone=browser">
+    Site search error rates and latency metrics
+  </Card>
+  <Card title="App request rates dashboard" icon="chart-bar" href="https://grafana.eks.production.govuk.digital/d/app-requests/app3a-request-rates-errors-durations?orgId=1&from=now-30m&to=now&timezone=browser&var-namespace=apps&var-app=search-api-v2&var-app=search-api&var-error_status=$__all&refresh=1m">
+    Request rates, errors, and durations for Search API v1 and v2
+  </Card>
+  <Card title="Kibana (Logit.io)" icon="search" href="https://dashboard.logit.io/sign-in">
+    Application logs — filter by `kubernetes.labels.app_kubernetes_io/name: search-api-v2-worker`
+  </Card>
+  <Card title="Sentry" icon="bug" href="https://govuk.sentry.io/projects/app-search-api-v2/?project=4505862568935424">
+    Search API v2 error tracking and synchronisation alerts
+  </Card>
+</CardGroup>

@@ -1,0 +1,108 @@
+---
+title: Purge the CDN cache
+description: How to purge pages and assets from the Fastly CDN cache, and from the standby CloudFront CDN.
+---
+
+[Fastly](https://www.fastly.com/products/cdn) caches HTTP resources — HTML pages, images, and scripts — on `www.gov.uk` and `assets.publishing.service.gov.uk` based on the `Cache-Control` headers served from origin. Most pages are cached for **5 minutes**, so when changes are published it may take up to 5 minutes for users to see them.
+
+<Warning>
+  If something was published that should not have been published, consider whether there has been a notifiable data breach and ensure someone is handling the matter before purging the cache.
+</Warning>
+
+## Check the cache headers for a URL
+
+Before purging, you can inspect the current cache state of any resource using `curl`:
+
+```sh
+curl -sI https://www.gov.uk/vat-rates | grep -Ei 'cache-control|age:|x-cache'
+```
+
+Example output:
+
+```
+age: 107
+cache-control: max-age=300, public,private
+x-cache: HIT
+x-cache-hits: 1
+```
+
+| Header | Meaning |
+|---|---|
+| `age` | Time in seconds since the resource was cached |
+| `cache-control` | Where and how long the resource can be cached |
+| `x-cache` | Whether the request was served from cache (`HIT`) or origin (`MISS`) |
+| `x-cache-hits` | Number of cache hits at this Fastly [point of presence](https://developer.fastly.com/learning/concepts/pop/) |
+
+---
+
+## Purge a specific URL from Fastly
+
+<Steps>
+  <Step title="Log into Fastly">
+    Log into [https://manage.fastly.com/](https://manage.fastly.com/). If you don't have an account, ask your tech lead or a member of the senior tech team.
+  </Step>
+  <Step title="Select the appropriate service">
+    Under [All services](https://manage.fastly.com/services/all), choose the service matching what you need to purge:
+
+    - **Production GOV.UK** — for `www.gov.uk`
+    - **Production Assets** — for `assets.publishing.service.gov.uk`
+  </Step>
+  <Step title="Purge the URL">
+    From the **Purge** drop-down button near the top left of the page, choose **Purge URL**.
+
+    Enter the full path of the resource to purge — everything after the hostname in the URL — and click **Purge**.
+  </Step>
+</Steps>
+
+---
+
+## Purge all objects from Fastly
+
+<Warning>
+  If possible, check with a member of the senior tech team before doing this in production.
+</Warning>
+
+<Steps>
+  <Step title="Log into Fastly">
+    Log into [https://manage.fastly.com/](https://manage.fastly.com/).
+  </Step>
+  <Step title="Select the appropriate service">
+    Under [All services](https://manage.fastly.com/services/all), choose the service you want to purge entirely.
+  </Step>
+  <Step title="Purge all">
+    From the **Purge** drop-down button, choose **Purge all**. The UI will ask for confirmation before issuing the purge request.
+  </Step>
+</Steps>
+
+---
+
+## Purge from the standby CloudFront CDN
+
+GOV.UK also has a standby CDN on CloudFront, intended only for use during a Fastly outage. You would normally only need to purge its cache in that scenario.
+
+<Steps>
+  <Step title="Log into the AWS console">
+    ```sh
+    gds aws govuk-production-developer -l
+    ```
+  </Step>
+  <Step title="Open the CloudFront distributions page">
+    Navigate to the [CloudFront distributions page](https://us-east-1.console.aws.amazon.com/cloudfront/v4/home?region=eu-west-1#/distributions) and choose the appropriate distribution:
+
+    - **WWW** — for `www.gov.uk`
+    - **Assets** — for `assets.publishing.service.gov.uk`
+  </Step>
+  <Step title="Create an invalidation">
+    Select the **Invalidations** tab and click **Create invalidation**.
+
+    Enter the full paths of the resources to purge (everything after the hostname). You can use wildcards (`*`). To purge all objects, enter `/*`.
+
+    Click **Create invalidation**.
+  </Step>
+</Steps>
+
+---
+
+## Further reading
+
+See [Fastly's documentation on purging](https://developer.fastly.com/learning/concepts/purging/) for more detail on how purge requests work.

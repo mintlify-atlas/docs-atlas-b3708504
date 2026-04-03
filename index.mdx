@@ -1,97 +1,65 @@
 ---
-title: "Introduction"
-description: "Welcome to the new home for your documentation"
+title: GOV.UK Developer Docs
+description: Technical documentation for developers working on GOV.UK — covering onboarding, architecture, deployments, operations, and platform infrastructure.
 ---
 
-## Setting up
+Welcome to the GOV.UK Developer Docs. This is the technical reference for everyone working on GOV.UK — from new developers getting set up for the first time, to experienced engineers managing production deployments and on-call incidents.
 
-Get your documentation site up and running in minutes.
-
-<Card
-  title="Start here"
-  icon="rocket"
-  href="/quickstart"
-  horizontal
->
-  Follow our three step quickstart guide.
-</Card>
-
-## Make it yours
-
-Design a docs site that looks great and empowers your users.
-
-<Columns cols={2}>
-  <Card
-    title="Edit locally"
-    icon="pen-to-square"
-    href="/development"
-  >
-    Edit your docs locally and preview them in real time.
+<CardGroup cols={2}>
+  <Card title="Get started" icon="rocket" href="/getting-started/get-started">
+    Step-by-step onboarding for new GOV.UK developers — set up your tools, access, and local environment.
   </Card>
-  <Card
-    title="Customize your site"
-    icon="palette"
-    href="/essentials/settings"
-  >
-    Customize the design and colors of your site to match your brand.
+  <Card title="Architecture" icon="sitemap" href="/getting-started/architecture-overview">
+    Understand how GOV.UK is structured — from the CDN and publishing pipeline to frontend rendering.
   </Card>
-    <Card
-    title="Set up navigation"
-    icon="map"
-    href="/essentials/navigation"
-  >
-    Organize your docs to help users find what they need and succeed with your product.
+  <Card title="Deployments" icon="arrow-up-from-bracket" href="/development/deployments">
+    Learn how GOV.UK apps are deployed using GitHub Actions, Argo CD, and Kubernetes.
   </Card>
-  <Card
-    title="API documentation"
-    icon="terminal"
-    href="/api-reference/introduction"
-  >
-    Auto-generate API documentation from OpenAPI specifications.
+  <Card title="On-call support" icon="bell" href="/operations/on-call">
+    Everything you need for your on-call shift — checklists, escalation paths, and incident response.
   </Card>
-</Columns>
+</CardGroup>
 
-## Create beautiful pages
+## Explore by area
 
-Everything you need to create world-class documentation.
+<CardGroup cols={3}>
+  <Card title="Building apps" icon="code" href="/development/setting-up-new-rails-app">
+    Set up new Rails applications following GOV.UK conventions.
+  </Card>
+  <Card title="Testing" icon="flask" href="/development/testing">
+    How GOV.UK tests applications — smoke tests, contract tests, and CI checks.
+  </Card>
+  <Card title="GitHub workflow" icon="github" href="/development/github">
+    How GOV.UK uses GitHub for version control, CI, and deployments.
+  </Card>
+  <Card title="Monitoring & logs" icon="chart-line" href="/operations/logging">
+    Access application logs, metrics dashboards, and alerts.
+  </Card>
+  <Card title="Kubernetes platform" icon="server" href="/infrastructure/kubernetes-overview">
+    The GOV.UK Kubernetes clusters — how they work and how to manage apps on them.
+  </Card>
+  <Card title="Security" icon="shield" href="/infrastructure/best-practices-for-handling-credentials">
+    Credential management, production access rules, and security best practices.
+  </Card>
+</CardGroup>
 
-<Columns cols={2}>
-  <Card
-    title="Write with MDX"
-    icon="pen-fancy"
-    href="/essentials/markdown"
-  >
-    Use MDX to style your docs pages.
-  </Card>
-  <Card
-    title="Code samples"
-    icon="code"
-    href="/essentials/code"
-  >
-    Add sample code to demonstrate how to use your product.
-  </Card>
-  <Card
-    title="Images"
-    icon="image"
-    href="/essentials/images"
-  >
-    Display images and other media.
-  </Card>
-  <Card
-    title="Reusable snippets"
-    icon="recycle"
-    href="/essentials/reusable-snippets"
-  >
-    Write once and reuse across your docs.
-  </Card>
-</Columns>
+## Quick links
 
-## Need inspiration?
+<CardGroup cols={2}>
+  <Card title="Applications" icon="grid" href="/getting-started/apps">
+    Browse all GOV.UK applications and services.
+  </Card>
+  <Card title="Repositories" icon="folder-open" href="/getting-started/repos">
+    Find any GOV.UK repository and understand its purpose.
+  </Card>
+  <Card title="Dictionary" icon="book" href="/getting-started/dictionary">
+    Definitions for GOV.UK-specific terms and acronyms.
+  </Card>
+  <Card title="Ask for help" icon="life-ring" href="/getting-started/ask-for-help">
+    Who to contact when you need support from the GOV.UK team.
+  </Card>
+</CardGroup>
 
-<Card
-  title="See complete examples"
-  icon="stars"
-  href="https://mintlify.com/customers"
->
-  Browse our showcase of exceptional documentation sites.
-</Card>
+<Note>
+  This documentation is maintained by the GOV.UK developer community. If you spot an issue or want to contribute, open a pull request on [GitHub](https://github.com/alphagov/govuk-developer-docs).
+</Note>

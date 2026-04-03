@@ -1,0 +1,290 @@
+---
+title: Creating an app on the Kubernetes platform
+description: Steps to create and deploy a new application on the GOV.UK Kubernetes platform, including Dockerfile setup, GitHub Actions workflows, Helm chart configuration, and Argo CD deployment.
+---
+
+This guide walks you through creating and deploying a new GOV.UK application on the Kubernetes platform. The example uses an application named `example` — replace this with your actual application name throughout.
+
+<Info>
+  Before starting, you should have an approved ADR or RFC document for the new application and have completed all steps in the [get started guide](/infrastructure/kubernetes-get-started).
+</Info>
+
+## Prerequisites
+
+<Steps>
+  <Step title="Create a new GOV.UK repository">
+    Follow the steps in the [Configure a new GOV.UK repository guide](/development/github-new-repo). This sets up your application with source code in a GitHub repository under the `alphagov` organisation with `govuk` and `container` labels applied.
+  </Step>
+
+  <Step title="Set up Sentry">
+    Add your application to the [Sentry Terraform file](https://github.com/alphagov/govuk-infrastructure/blob/main/terraform/deployments/sentry/locals.tf) to enable error tracking.
+  </Step>
+</Steps>
+
+## Add a Dockerfile
+
+Add a `Dockerfile` and `.dockerignore` to your app so CI can build it as a Docker image.
+
+For Ruby applications, base your image on [GOV.UK Ruby Images](https://github.com/alphagov/govuk-ruby-images):
+
+```dockerfile
+ARG ruby_version=3.4
+ARG base_image=ghcr.io/alphagov/govuk-ruby-base:$ruby_version
+ARG builder_image=ghcr.io/alphagov/govuk-ruby-builder:$ruby_version
+
+FROM $builder_image AS builder
+
+WORKDIR $APP_HOME
+COPY Gemfile* .ruby-version ./
+RUN bundle install
+COPY . .
+RUN bootsnap precompile --gemfile .
+
+FROM $base_image
+
+ENV GOVUK_APP_NAME=NEW_APP_NAME
+
+WORKDIR $APP_HOME
+COPY --from=builder $BUNDLE_PATH $BUNDLE_PATH
+COPY --from=builder $BOOTSNAP_CACHE_DIR $BOOTSNAP_CACHE_DIR
+COPY --from=builder $APP_HOME .
+
+USER app
+CMD ["puma"]
+```
+
+Add a `.dockerignore` file:
+
+```dockerignore
+/.git/
+/.bundle
+!/.env.example
+/log/*
+!/log/.keep
+tmp
+```
+
+## Add GitHub Actions workflows
+
+Add the following three workflows under `.github/workflows/`:
+
+<AccordionGroup>
+  <Accordion title="CI workflow">
+    The CI workflow runs tests and linting. It acts as a gate for the release and deploy workflows.
+
+    ```yaml
+    name: CI
+
+    on:
+      push:
+        branches:
+          - main
+      pull_request:
+      workflow_dispatch:
+        inputs:
+          ref:
+            description: 'The branch, tag or SHA to checkout'
+            default: main
+            type: string
+
+    jobs:
+      codeql-sast:
+        name: CodeQL SAST scan
+        uses: alphagov/govuk-infrastructure/.github/workflows/codeql-analysis.yml@main
+        permissions:
+          security-events: write
+
+      dependency-review:
+        name: Dependency Review scan
+        uses: alphagov/govuk-infrastructure/.github/workflows/dependency-review.yml@main
+
+      lint-ruby:
+        name: Lint Ruby
+        uses: alphagov/govuk-infrastructure/.github/workflows/rubocop.yml@main
+
+      security-analysis:
+        name: Security Analysis
+        uses: alphagov/govuk-infrastructure/.github/workflows/brakeman.yml@main
+        secrets: inherit
+        permissions:
+          contents: read
+          security-events: write
+          actions: read
+
+      test-ruby:
+        name: Test Ruby / Run RSpec
+        runs-on: ubuntu-latest
+        env:
+          RAILS_ENV: test
+        steps:
+          - uses: actions/checkout@v6
+            with:
+              ref: ${{ inputs.ref || github.ref }}
+              show-progress: false
+          - uses: ruby/setup-ruby@v1
+            with:
+              bundler-cache: true
+          - run: bin/rake
+    ```
+  </Accordion>
+
+  <Accordion title="Release workflow">
+    The release workflow creates new versioned releases automatically when CI passes on `main`.
+
+    ```yaml
+    name: Release
+
+    on:
+      workflow_dispatch:
+      workflow_run:
+        workflows: [CI]
+        types: [completed]
+        branches: [main]
+
+    jobs:
+      release:
+        if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+        name: Release
+        uses: alphagov/govuk-infrastructure/.github/workflows/release.yml@main
+        secrets:
+          GH_TOKEN: ${{ secrets.GOVUK_CI_GITHUB_API_TOKEN }}
+    ```
+  </Accordion>
+
+  <Accordion title="Deploy workflow">
+    The deploy workflow builds a Docker image and triggers deployment to the chosen environment.
+
+    ```yaml
+    name: Deploy
+
+    run-name: Deploy ${{ inputs.gitRef || github.event.release.tag_name }} to ${{ inputs.environment || 'integration' }}
+
+    on:
+      workflow_dispatch:
+        inputs:
+          gitRef:
+            description: 'Commit, tag or branch name to deploy'
+            required: true
+            type: string
+          environment:
+            description: 'Environment to deploy to'
+            required: true
+            type: choice
+            options:
+            - integration
+            - staging
+            - production
+            default: 'integration'
+      release:
+        types: [released]
+
+    jobs:
+      build-and-publish-image:
+        if: github.event_name == 'workflow_dispatch' || startsWith(github.event.release.tag_name, 'v')
+        name: Build and publish image
+        uses: alphagov/govuk-infrastructure/.github/workflows/build-and-push-multiarch-image.yml@main
+        with:
+          gitRef: ${{ inputs.gitRef || github.event.release.tag_name }}
+        permissions:
+          id-token: write
+          contents: read
+          packages: write
+      trigger-deploy:
+        name: Trigger deploy to ${{ inputs.environment || 'integration' }}
+        needs: build-and-publish-image
+        uses: alphagov/govuk-infrastructure/.github/workflows/deploy.yml@main
+        with:
+          imageTag: ${{ needs.build-and-publish-image.outputs.imageTag }}
+          environment: ${{ inputs.environment || 'integration' }}
+        secrets:
+          WEBHOOK_TOKEN: ${{ secrets.GOVUK_ARGO_EVENTS_WEBHOOK_TOKEN }}
+          WEBHOOK_URL: ${{ secrets.GOVUK_ARGO_EVENTS_WEBHOOK_URL }}
+          GH_TOKEN: ${{ secrets.GOVUK_CI_GITHUB_API_TOKEN }}
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Create your first release
+
+<Steps>
+  <Step title="Merge a pull request">
+    Merge a pull request into the `main` branch. It is important that the commit at the tip of the branch is a merge commit.
+  </Step>
+
+  <Step title="Tag the commit">
+    Tag the commit at the tip of `main` with `v1` and push the tag:
+
+    ```bash
+    git tag v1
+    git push origin v1
+    ```
+  </Step>
+
+  <Step title="Trigger the deploy workflow">
+    Go to the Actions tab in GitHub, select the **Deploy** workflow, and click **Run workflow**.
+  </Step>
+</Steps>
+
+## Deploy to environments
+
+Start with Integration, then promote to Staging and Production after verifying.
+
+<Steps>
+  <Step title="Add image tag files to govuk-helm-charts">
+    Add an image tag file named after your application to the `image-tags` folder for each environment in the [`govuk-helm-charts` repo](https://github.com/alphagov/govuk-helm-charts):
+
+    ```
+    charts/app-config/image-tags/{test,integration,staging,production}/example
+    ```
+
+    The file should contain:
+
+    ```yaml
+    image_tag: latest
+    automatic_deploys_enabled: true
+    promote_deployment: false
+    ```
+
+    <Warning>
+      Do not use `latest` as the initial tag value in practice — set it to the version number of your first release to avoid issues with automatic updates pulling unexpected versions.
+    </Warning>
+  </Step>
+
+  <Step title="Add initial secrets to AWS Secrets Manager">
+    **Rails apps**: Generate a `SECRET_KEY_BASE` using `rails secret` and add it as a key/value pair to the `govuk/common/rails-secret-key-base` secret in all three environments.
+
+    **Sentry DSN**: Get the DSN from Sentry under **Settings → Projects → \<your project\> → Settings → Client Keys (DSN)** and add it to the `govuk/common/sentry` secret in all three environments.
+  </Step>
+
+  <Step title="Add the app to app-config chart values">
+    Add your app to the array in `charts/app-config/values-integration.yaml`:
+
+    ```yaml
+    - name: example
+    ```
+
+    This uses the [`generic-govuk-app`](https://github.com/alphagov/govuk-helm-charts/blob/main/charts/generic-govuk-app/) Helm chart with default values. To override values, use `helmValues`:
+
+    ```yaml
+    - name: example
+      helmValues:
+        extraEnv:
+          - name: RETICULATE_SPLINES
+            value: 1
+    ```
+
+    See the [`generic-govuk-app` values.yaml](https://github.com/alphagov/govuk-helm-charts/blob/main/charts/generic-govuk-app/values.yaml) for all available configuration options.
+  </Step>
+
+  <Step title="Add a CNAME record">
+    Add a [CNAME record](https://github.com/alphagov/govuk-infrastructure/pull/3289/files) for your application in the integration environment.
+  </Step>
+
+  <Step title="Verify the deployment in Argo CD">
+    Trigger your Deploy GitHub Action, then visit the [Integration Argo CD dashboard](https://argo.eks.integration.govuk.digital/applications). After a short wait, your new application will appear on the dashboard.
+
+    Once integration is working, repeat the same steps for [staging](https://github.com/alphagov/govuk-helm-charts/blob/main/charts/app-config/values-staging.yaml) and [production](https://github.com/alphagov/govuk-helm-charts/blob/main/charts/app-config/values-production.yaml).
+
+    Set `promote_deployment: true` in the image tag file if you want automatic promotions to higher environments.
+  </Step>
+</Steps>

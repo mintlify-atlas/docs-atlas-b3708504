@@ -1,0 +1,98 @@
+---
+title: Creating a new GitHub repository
+description: How to create and configure a new GOV.UK GitHub repository using Terraform, including security scanning, documentation registration, and deployment access.
+---
+
+All GitHub repositories belonging to GOV.UK must be created and managed by Terraform. Manual creation through the GitHub UI is not supported, as deployment access and secrets are configured exclusively through `govuk-infrastructure`.
+
+<Note>
+  If you are creating a new Rails app, follow the [tailored instructions for setting up a new Rails application](/development/setting-up-new-rails-app) instead.
+</Note>
+
+## Create a repository via Terraform
+
+<Steps>
+  <Step title="Open a PR to add your repository to repos.yml">
+    Add a new entry to the [`repos.yml` file in govuk-infrastructure](https://github.com/alphagov/govuk-infrastructure/blob/main/terraform/deployments/github/repos.yml). This file defines key metadata for the repository, including which workflow jobs must pass to merge or deploy.
+
+    For example, an entry for a new Ruby on Rails application using reusable workflows:
+
+    ```yaml
+    new-application:
+      can_be_deployed: true
+      required_pull_request_reviews:
+        require_code_owner_reviews: true
+      required_status_checks:
+        standard_contexts: *standard_govuk_rails_checks
+        additional_contexts:
+          - Lint JavaScript / Run Standardx
+          - Lint SCSS / Run Stylelint
+          - Test JavaScript / Run Jasmine
+          - Test Ruby / Run RSpec
+    ```
+
+    <Warning>
+      Workflow names in `required_status_checks` must exactly match the job names defined in your app's `ci.yml` file. A mismatch means the check will never be satisfied.
+    </Warning>
+  </Step>
+
+  <Step title="Request a review and run Terraform">
+    Contact `#govuk-ask-platform-engineering` for a review. After the changes are merged, they will run Terraform to create the repository.
+
+    The repository will be created and populated with the required permissions and secrets automatically.
+  </Step>
+
+  <Step title="Write a README and add a licence">
+    - Write a well-structured README following the [GDS Way README guidance](https://gds-way.digital.cabinet-office.gov.uk/manuals/readme-guidance.html#writing-readmes).
+    - Add a licence following the [GDS Licensing Guidelines](https://gds-way.digital.cabinet-office.gov.uk/manuals/licensing.html#specifying-the-licence).
+  </Step>
+</Steps>
+
+## Import an existing repository into Terraform
+
+If you have a pre-existing repository not managed by Terraform, you can import it.
+
+Add an entry to `terraform/deployments/github/import.tf` in `govuk-infrastructure`:
+
+```hcl
+import {
+  to = github_repository.govuk_repos["content-modelling-e2e"]
+  id = "content-modelling-e2e"
+}
+```
+
+Create the file if it doesn't exist. See [example commit](https://github.com/alphagov/govuk-infrastructure/commit/c6774a7d42ca2eb9b0987a51cde8b57e13e0577f) for reference.
+
+Alternatively, push commits from an existing local repository to the new alphagov remote:
+
+```shell
+cd existing-repository/
+git checkout main
+git remote add new-repo "git@github.com:alphagov/new-repo.git"
+git push new-repo main
+```
+
+Then check out the repository fresh from the alphagov remote and delete the original local copy.
+
+## Add mandatory security scans to CI
+
+The following security scans are mandatory for all repositories:
+
+- Dependency Review — uses the `dependency-review.yml` shared workflow from `govuk-infrastructure`
+- CodeQL — uses the `codeql.yml` shared workflow from `govuk-infrastructure`
+
+Rails applications additionally require:
+
+- [Brakeman](/development/brakeman) — see [example in Whitehall](https://github.com/alphagov/whitehall/blob/15738e4efbf4d7df113eb3590a5367b34f482ae3/.github/workflows/ci.yml#L13-L30)
+
+## Register the repository in GOV.UK Developer Docs
+
+Add the repository to the [`repos.yml`](https://github.com/alphagov/govuk-developer-docs/blob/main/data/repos.yml) file in the GOV.UK Developer Docs. If you want Slack alerts for deployment issues, provide a Slack channel name in the `alerts_team` field.
+
+## Managing deployment access
+
+GOV.UK no longer uses GitHub "topic" tags to configure deployment access. Granting access to deployment secrets must be done explicitly through `govuk-infrastructure`. This approach:
+
+- Prevents accidentally (or intentionally) granting repositories access to deployment credentials
+- Removes the GitHub Search API as a single point of failure for configuration
+- Makes access grants explicit and auditable rather than relying on "magic" processes

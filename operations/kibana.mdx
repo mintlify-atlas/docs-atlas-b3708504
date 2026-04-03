@@ -1,0 +1,236 @@
+---
+title: Using Kibana
+description: How to search and analyse GOV.UK logs in Kibana, including useful pre-built queries and the Elasticsearch query DSL.
+---
+
+All GOV.UK logs across all environments are collected in Kibana, which you access through [Logit](/operations/logit).
+
+Kibana supports [DQL syntax, Lucene search syntax, and full JSON-based Elasticsearch queries](https://www.elastic.co/guide/en/kibana/current/search.html).
+
+## Setting up the UI
+
+The default Kibana view shows a timestamp and a grouped `_source` column for each log entry. You can customise this to focus on the fields most relevant to your investigation.
+
+### Adding fields to the log list
+
+Navigate to the **Available Fields** list on the left-hand side, hover over a field and click **add** to include it as a column. Some useful fields:
+
+- `application`
+- `controller`
+- `route`
+- `path`
+- `status`
+- `request`
+- `tags`
+
+To remove a field, hover over it in the **Selected Fields** section and click **remove**.
+
+### Adjusting the timeline
+
+Change the dropdown above the bar chart from `auto` to your preferred granularity (hourly, daily, weekly). Set the time range by clicking the time range selector in the top-right corner.
+
+### Switching index patterns
+
+The default index pattern is `filebeat-*`, which covers application logs. To query Kubernetes events, change the index pattern dropdown in the top-left to `kubernetes-events-*`.
+
+## Saving and sharing queries
+
+You can save and load queries using the buttons in the top-right corner of the Kibana interface. Saved queries are a useful starting point rather than writing from scratch.
+
+Every change to your query updates the URL. These URLs are long and are often mangled by Slack and Trello. Use the **Share** link in the top-right, then **Short URL**, to generate a shareable short link.
+
+## Useful queries
+
+### Application requests
+
+**All requests rendered by the `content_items` controller in frontend:**
+
+```lucene
+application: frontend AND tags: request AND controller: content_items
+```
+
+**All requests within the `/government/groups` path:**
+
+```lucene
+tags: request AND path: \/government\/groups\/*
+```
+
+### HTTP errors
+
+**5xx errors returned from the cache layer:**
+
+```lucene
+host:cache* AND (@fields.status:[500 TO 504] OR status:[500 TO 504])
+```
+
+### Nginx logs
+
+**All nginx logs:**
+
+```lucene
+tags:"nginx"
+```
+
+**Nginx logs for frontend:**
+
+```lucene
+tags:"nginx" AND application:frontend*
+```
+
+<Note>
+  The `@timestamp` field on nginx log entries records the **request end time**. To calculate the start time, subtract the value of the `request_time` field.
+</Note>
+
+### Application logs
+
+**All application production.log entries:**
+
+```lucene
+tags:"application"
+```
+
+**Application logs for Smart Answers:**
+
+```lucene
+tags:"application" AND application:"smartanswers"
+```
+
+### Database
+
+**MongoDB slow queries:**
+
+```lucene
+application:"mongodb" AND message:"command"
+```
+
+### Publishing
+
+**Publishing API timeouts from specific apps:**
+
+```lucene
+message:"TimedOutException" AND (application:"specialist-publisher" OR application:"whitehall" OR application:"content-tagger")
+```
+
+**Mirrorer logs:**
+
+```lucene
+syslog_program:"govuk_sync_mirror"
+```
+
+### Kubernetes events
+
+Switch the index pattern in the top-left to `kubernetes-events-*` before running these queries. The `message` field gives a human-readable description of each event.
+
+**Events for the Publisher app:**
+
+```lucene
+involvedObject.name: "publisher"
+```
+
+**Pods in a CrashLoopBackOff:**
+
+```lucene
+reason: "BackOff"
+```
+
+**Pods that failed to start:**
+
+```lucene
+reason: "Failed"
+```
+
+**All deployment events for a specific app:**
+
+```lucene
+involvedObject.kind: "Deployment" AND involvedObject.name: "frontend"
+```
+
+## Elasticsearch query DSL
+
+For more complex queries, use the Elasticsearch query DSL by clicking **Add a filter** and then **Edit Query DSL**.
+
+### Example: 410 responses to a specific path
+
+Find all requests to the Transition Checker login page that resulted in a 410 response:
+
+```json
+{
+  "query": {
+    "bool": {
+      "filter": [
+        {
+          "term": {
+            "status": 410
+          }
+        },
+        {
+          "regexp": {
+            "request": {
+              "value": ".+transition-check/login.+"
+            }
+          }
+        }
+      ]
+    }
+  }
+}
+```
+
+The equivalent Lucene query (simpler for this case):
+
+```lucene
+request:*transition-check\/login* AND status:410
+```
+
+### Example: Count unique IPs for a specific response
+
+To count the number of unique IP addresses that received a 410 from the Transition Checker login page, you need an aggregation, which requires the Elasticsearch DSL. Use **Dev Tools** from the left-hand menu:
+
+```json
+GET _search
+{
+  "query": {
+    "bool": {
+      "filter": [
+        {
+          "term": {
+            "status": 410
+          }
+        },
+        {
+          "range": {
+            "@timestamp": {
+              "time_zone": "+01:00",
+              "gte": "2021-06-16T12:00:00",
+              "lt": "2021-06-16T17:00:00"
+            }
+          }
+        },
+        {
+          "regexp": {
+            "request": {
+              "value": ".+transition-check/login.+"
+            }
+          }
+        }
+      ]
+    }
+  },
+  "aggs": {
+    "unique-ips": {
+      "terms": {
+        "field": "remote_addr"
+      }
+    }
+  }
+}
+```
+
+Press the **Play** icon to run the query. Results appear in the right-hand panel: a `hits` array for each matching record, and an `aggregations` object with your aggregations grouped into `buckets`.
+
+## Gotchas
+
+- **Score** performs an aggregation of a field on the last 2,000 results only
+- **Terms** is an aggregation of terms in the field across recent indices, not a count of a specific field value
+- The `@timestamp` field on nginx log entries records **request end time**, which can be confusing when calculating durations
+- For complex queries, read the [Lucene and Elasticsearch syntax documentation](https://www.elastic.co/guide/en/kibana/current/search.html)

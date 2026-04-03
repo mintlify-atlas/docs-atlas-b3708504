@@ -1,0 +1,143 @@
+---
+title: CDN (Fastly)
+description: How GOV.UK uses Fastly as a CDN — caching rules, VCL configuration, cache purging, DDoS protection, and blocking traffic at the edge.
+---
+
+GOV.UK uses [Fastly](https://www.fastly.com/) as its CDN. Public users do not access GOV.UK origin servers directly — they connect via Fastly's global edge network. This provides two main benefits:
+
+- **Proximity**: Fastly edge nodes are distributed globally. GOV.UK origin servers are only in AWS `eu-west-1` (Ireland).
+- **Reduced origin load**: Fastly uses Varnish to cache responses, so many requests never reach origin.
+
+The CDN is also responsible for retrying requests against the [static mirror](https://docs.publishing.service.gov.uk/manual/fall-back-to-mirror.html) if origin is unavailable.
+
+## Configuration
+
+Most CDN configuration is versioned and managed as code:
+
+- [`govuk-fastly`](https://github.com/alphagov/govuk-fastly) — Fastly service configuration and VCL
+- [`govuk-fastly-secrets`](https://github.com/alphagov/govuk-fastly-secrets) — secrets and dictionaries (logging endpoints, IP banlists, etc.)
+
+The `www`, `bouncer`, and `assets` services send logs to S3 which can be [queried for analysis](https://docs.publishing.service.gov.uk/manual/query-cdn-logs.html).
+
+### Deploying Fastly changes
+
+<Steps>
+  <Step title="Make changes and open a PR">
+    Make your changes in [`govuk-fastly`](https://github.com/alphagov/govuk-fastly) or [`govuk-fastly-secrets`](https://github.com/alphagov/govuk-fastly-secrets) and open a pull request.
+  </Step>
+
+  <Step title="Review the Terraform plan">
+    After merging, check the proposed changes in the Terraform Cloud console. Check the `fastly-vcl-diff` post-plan task to view a diff of your VCL changes.
+  </Step>
+
+  <Step title="Apply the changes">
+    If you are satisfied with the plan, confirm it and wait for Terraform Cloud to deploy your changes.
+  </Step>
+</Steps>
+
+## Caching behaviour
+
+Fastly runs [Varnish](https://varnish-cache.org/docs/2.1/index.html) with VCL (Varnish Configuration Language) to define caching logic.
+
+### Cache TTLs
+
+| Response type | Default TTL |
+|---|---|
+| Standard responses | 300 seconds (5 minutes) |
+| 5XX responses | 1 second |
+| Mirror responses | 15 minutes |
+
+A **grace period of 24 hours** is set for all objects. If origin is down, Fastly will continue to serve stale content for up to 24 hours.
+
+### Automatically cached status codes
+
+Varnish caches the following GET request status codes automatically: `200`, `203`, `300`, `301`, `302`, `404`, `410`.
+
+### Conditional request caching
+
+Fastly caches HTTP responses that include cache validation headers (`ETag` or `Last-Modified`) indefinitely. GOV.UK typically serves these headers with assets uploaded via Asset Manager.
+
+When a conditional response is cached, Fastly modifies subsequent requests to origin to include conditional HTTP headers, allowing origin to return `304 Not Modified` instead of transferring the full resource again.
+
+<Warning>
+  If you accidentally serve invalid responses with cache validation headers, you must either change the validation headers or [manually purge the resource from the Fastly cache](/operations/purge-cache). Otherwise the incorrect resource could be served for a very long time.
+</Warning>
+
+## Testing VCL
+
+Use Fastly's [Fiddle tool](https://fiddle.fastlydemo.net/) for manual testing, or test with `curl` using a debug header:
+
+```bash
+curl -svo /dev/null -H "Fastly-Debug: 1" https://www.gov.uk/
+```
+
+This returns useful debugging headers:
+
+```text
+Fastly-Debug-Path: <nodes you hit>
+Fastly-Debug-TTL: <nodes with TTL>
+Fastly-Debug-Digest: <hash>
+X-Served-By: <node that responded>
+X-Cache: HIT, HIT
+X-Cache-Hits: 1
+X-Timer: <time it took>
+Vary: Accept-Encoding, Accept-Encoding
+```
+
+See the Fastly [debugging guide](https://docs.fastly.com/guides/debugging/checking-cache#using-curl) for more detail.
+
+## DDoS protection
+
+Services behind Fastly have [DDoS protection enabled](https://manage.fastly.com/security/ddos/protection).
+
+If you are experiencing an attack and the automatic protection is insufficient, [start an incident](/operations/incident-what-to-do).
+
+Review [DDoS events in Fastly](https://manage.fastly.com/security/ddos/protection/events) for information about any detected attack. You can [inspect matched rules per event](https://www.fastly.com/documentation/guides/security/ddos-protection/about-the-ddos-protection-controls/#about-the-events-page) and [override generated rules](https://www.fastly.com/documentation/guides/security/ddos-protection/about-the-ddos-protection-controls/#modifying-rule-behavior) to block, log-only, or disable them.
+
+## Blocking traffic at the CDN edge
+
+<AccordionGroup>
+  <Accordion title="Block by IP address">
+    Banning IPs is occasionally used when users are:
+    - not respecting [robots.txt directives](https://www.gov.uk/robots.txt)
+    - repeatedly hitting rate limits without slowing down
+    - making suspicious requests such as SQL injection attempts
+
+    <Warning>
+      Banning IPs should not be taken lightly — many users can share the same IP address, and the user behind an IP can change over time.
+    </Warning>
+
+    Change the list of banned IPs by modifying the [YAML config file in govuk-fastly-secrets](https://github.com/alphagov/govuk-fastly-secrets/blob/45381b4e0af022dfb4ba51c485551e023c2e2e12/dictionaries.yaml#L4) and deploying via the [Terraform Cloud workspace](https://app.terraform.io/app/govuk/workspaces/govuk-fastly-secrets).
+  </Accordion>
+
+  <Accordion title="Block by JA3 TLS fingerprint">
+    [JA3](https://engineering.salesforce.com/open-sourcing-ja3-92c9e53c3c41/) fingerprints TLS connections, allowing you to match botnet or malware traffic when no better criteria are available.
+
+    To block based on a JA3 signature:
+
+    1. Update the [JA3 signature denylist dictionary](https://github.com/alphagov/govuk-fastly-secrets/blob/45381b4e0af022dfb4ba51c485551e023c2e2e12/dictionaries.yaml#L1-L3).
+    2. Deploy the dictionary to the `www` and `assets` services.
+
+    Note that banning JA3s is risky — an incorrect rule could block a legitimate browser version.
+  </Accordion>
+
+  <Accordion title="Block based on arbitrary criteria (VCL)">
+    As well as IP and JA3, you can block traffic based on headers, URL paths, or any other request attribute by writing VCL. Changes can be included from the private `govuk-cdn-config-secrets` repo so that mitigations during an active attack are not visible to the attacker.
+  </Accordion>
+
+  <Accordion title="Block at the AWS WAF level">
+    Even if traffic passes through Fastly, you can block it at the AWS level using the [AWS WAF (Web Application Firewall)](https://aws.amazon.com/waf/).
+
+    See WAF configuration in the [`cloudfront`](https://github.com/alphagov/govuk-infrastructure/tree/main/terraform/deployments/cloudfront) and [`govuk-publishing-infrastructure`](https://github.com/alphagov/govuk-infrastructure/tree/main/terraform/deployments/govuk-publishing-infrastructure) Terraform deployments.
+  </Accordion>
+</AccordionGroup>
+
+## Fastly IP ranges and origin access controls
+
+Fastly publishes its cache node [IP address ranges as JSON](https://api.fastly.com/public-ip-list). GOV.UK origin servers have firewall rules allowing connections only from GDS office IPs and these Fastly ranges. The rules are updated automatically using the [Fastly Terraform provider](https://registry.terraform.io/providers/fastly/fastly/latest/docs) when the `infra-security-groups` module is deployed.
+
+## Bouncer service
+
+Fastly normally supports up to 1000 domains per service. For Bouncer, GOV.UK has had this limit raised to 3500 (the current in-use count is around 2000).
+
+Bouncer uses a "service pinned map" at `bouncer-cdn.production.govuk.service.gov.uk`. Transitioning domains CNAME to this address rather than being added to the Fastly service directly, which avoids the domain limit.

@@ -1,0 +1,83 @@
+---
+title: Documents aren't live after publishing
+description: Troubleshooting guide for when a document has been published but isn't appearing on GOV.UK.
+---
+
+If a document isn't live on GOV.UK after a publisher has published it, it may have got stuck somewhere in the publishing pipeline. Work through the steps below to identify and fix the problem.
+
+## Check the document status
+
+A Rake task in the Publishing API will check where a piece of content is currently available across the pipeline:
+
+```bash
+bundle exec rake data_hygiene:document_status_check[content_id,locale]
+```
+
+Use the output to identify at which stage the document is missing, then follow the appropriate section below.
+
+---
+
+## If the document isn't in the Publishing API
+
+This likely means the publishing app itself failed to send the document correctly to Publishing API. Start by trying to republish the document from within the app's user interface. If that doesn't work, use the per-app Rake tasks below.
+
+<AccordionGroup>
+  <Accordion title="Whitehall">
+    Whitehall has a custom user interface for republishing individual pieces of content, including documents. A link to the republishing UI can be found in the "More" section of the site:
+
+    - [Integration](https://whitehall-admin.integration.publishing.service.gov.uk/government/admin/republishing)
+    - [Staging](https://whitehall-admin.staging.publishing.service.gov.uk/government/admin/republishing)
+    - [Production](https://whitehall-admin.publishing.service.gov.uk/government/admin/republishing)
+  </Accordion>
+  <Accordion title="Publisher">
+    Republish a specific edition by slug:
+
+    ```bash
+    bundle exec rake publishing_api:republish_edition[slug]
+    ```
+  </Accordion>
+  <Accordion title="Travel Advice Publisher">
+    Republish a travel advice edition by country slug:
+
+    ```bash
+    bundle exec rake publishing_api:republish_edition[country_slug]
+    ```
+  </Accordion>
+  <Accordion title="Specialist Publisher">
+    The datastore for Specialist Publisher is the Publishing API directly. If the content is not in the Publishing API, it will also be absent from Specialist Publisher and will need to be redrafted.
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## If the document isn't in the Content Store
+
+If the document is present in the Publishing API but not in the Content Store, use this Rake task in the Publishing API to represent the content item downstream:
+
+```bash
+bundle exec rake represent_downstream:high_priority:content_id[content_id]
+```
+
+<Warning>
+  This task might publish draft content to the live Content Store. Use with caution. See [this Trello card](https://trello.com/c/bfAEuv4S/1576-consider-improving-documentation-on-the-consequences-of-running-representdownstream-rake-task-on-publishing-api) for more details.
+</Warning>
+
+Note: if you run this task to fix missing routes, it may not work correctly as the Content Store keeps a cache of the routes it believes to be registered.
+
+---
+
+## If routes aren't in the Router
+
+If the document is in the Content Store but returns a 404, the routes may not be registered in the Router. Use this Rake task in the Content Store to register the routes for a content item directly:
+
+```bash
+bundle exec rake routes:register[base_path]
+```
+
+---
+
+## If the document still isn't live
+
+If the document appears correct at every stage of the pipeline, the problem is likely a stale CDN cache. 404 pages are cached with a shorter expiration time, so if a publisher visited the page before it was live they may have cached the 404 response.
+
+[Purge the cache](/operations/purge-cache) for that document's URL to resolve this.

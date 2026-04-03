@@ -1,0 +1,217 @@
+---
+title: The development and CI/CD pipeline
+description: The full GOV.UK development pipeline from opening a pull request to deploying to production, including CI conventions, reusable workflows, and GitHub Actions configuration.
+---
+
+GOV.UK's development and deployment pipeline follows a consistent path from code change to production. Teams are responsible for deploying their own work. [Regular releases minimise the risk of major problems](https://gds.blog.gov.uk/2012/11/02/regular-releases-reduce-risk) and improve recovery time.
+
+<Warning>
+  When responding to a security incident, make code changes in private to avoid accidentally disclosing the vulnerability. Contact your tech lead or GOV.UK senior tech for guidance on making a repo private.
+</Warning>
+
+## Pipeline overview
+
+<Steps>
+  <Step title="Open a pull request">
+    Create a branch, make your changes, and open a PR against `main`. The PR triggers CI automatically.
+  </Step>
+
+  <Step title="Wait for CI to pass">
+    The CI workflow lints the code, runs tests, and runs security scans. PRs cannot be merged until all required checks pass — this is enforced by branch protection rules configured in `govuk-infrastructure`.
+
+    [Read about CI checks](/development/testing).
+  </Step>
+
+  <Step title="Review your own changes">
+    Double-check your code and commits before requesting a review. Two tools are available for testing changes before merging:
+
+    - **Review apps** — for demoing a running version of a frontend change. See [review apps](/development/review-apps).
+    - **Branch deploys** — for testing on real infrastructure in Integration. See [manual deployments](/development/deployments#manual-deployment).
+  </Step>
+
+  <Step title="Get a code review">
+    Follow the [GDS Way code review guidelines](https://gds-way.digital.cabinet-office.gov.uk/manuals/code-review-guidelines.html). All PRs require two approvals from GDS (preferably GOV.UK). See the full [merging pull requests](/development/merge-pr) guidance.
+  </Step>
+
+  <Step title="Check for a deployment freeze">
+    Before merging, check whether a [deployment freeze](/development/deployments#deployment-freezes) is in effect. Avoid merging PRs during a freeze unless the change is urgent.
+  </Step>
+
+  <Step title="Merge the pull request">
+    Once approved and CI has passed, merge using the GitHub UI. Some apps [restrict who can merge](https://github.com/alphagov/govuk-infrastructure/blob/main/terraform/deployments/github/repos.yml). If you cannot merge your own PR, ask a [GOV.UK Production Deploy team member](https://github.com/orgs/alphagov/teams/gov-uk-production-deploy/members) to merge and deploy it for you.
+
+    Code merged to `main` is tested again on CI, because `main` may have changed since the PR's tests last ran.
+
+    <Warning>
+      Some applications have continuous deployment enabled, meaning the deployment process is fully automated after merge. Do any manual testing with a branch deploy before merging.
+    </Warning>
+  </Step>
+
+  <Step title="Deploy through environments">
+    For continuously deployed apps, deployment to Integration → Staging → Production happens automatically after merge. For other apps, deploy your changes all the way to production as soon as possible.
+
+    After deploying:
+
+    - Check [Sentry](/operations/sentry) for new errors
+    - Check Grafana for any issues ([see monitoring docs](/operations/prometheus-grafana-and-alertmanager))
+    - Run a build of [end-to-end tests](https://github.com/alphagov/govuk-e2e-tests) in the target environment
+  </Step>
+</Steps>
+
+## GitHub Actions CI conventions
+
+GOV.UK uses [GitHub Actions](https://github.com/features/actions) as its preferred CI platform, as established in [GOV.UK RFC 123](https://github.com/alphagov/govuk-rfcs/blob/main/rfc-123-github-actions-ci.md).
+
+<Warning>
+  If your workflow requires secrets, talk to [GOV.UK senior tech](/getting-started/ask-for-help) before deploying. This ensures consistent secret management across the alphagov organisation.
+</Warning>
+
+### CI workflow file name and structure
+
+The CI workflow file must be named `ci.yml` and placed in `.github/workflows/`. The workflow must have `name: CI`. Each task (tests, linting, security scans) should be a separate job within the workflow.
+
+```yaml
+# .github/workflows/ci.yml
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.repository }}-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  security-analysis:
+    uses: alphagov/govuk-infrastructure/.github/workflows/brakeman.yml@main
+
+  lint-javascript:
+    uses: alphagov/govuk-infrastructure/.github/workflows/standardx.yml@main
+    with:
+      files: "'app/assets/javascripts/**/*.js'"
+
+  lint-ruby:
+    uses: alphagov/govuk-infrastructure/.github/workflows/rubocop.yml@main
+
+  test-ruby:
+    uses: alphagov/govuk-infrastructure/.github/workflows/rspec.yml@main
+```
+
+The `concurrency` block ensures only one CI run is active at once for a given branch. Without it, two PRs merged in rapid succession can cause the deployment system to number releases out of order.
+
+### When CI runs
+
+The workflow should run on:
+
+- `push` to `main` — re-tests after merge, as `main` may have changed
+- `pull_request` — tests the branch merged with the current default branch
+
+Do not configure CI to run on all `push` events alongside `pull_request`, as this causes duplicate runs.
+
+To run CI on demand before opening a PR, add a `workflow_dispatch` trigger:
+
+```yaml
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'The branch, tag or SHA to checkout'
+        default: main
+        type: string
+
+jobs:
+  test-ruby:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+```
+
+### Reuse shared workflows
+
+GOV.UK maintains reusable workflows in `govuk-infrastructure`. Use them instead of duplicating workflow steps.
+
+```yaml
+jobs:
+  lint-ruby:
+    name: Lint Ruby
+    uses: alphagov/govuk-infrastructure/.github/workflows/rubocop.yml@main
+```
+
+### Pin untrusted third-party actions to a commit SHA
+
+Pinning to a commit SHA prevents supply chain attacks via mutated tags.
+
+```yaml
+jobs:
+  security-analysis:
+    # Instead of: uses: some/action@v2
+    uses: some/action@c86d0dc2cb1a4ca77a7ba2912c5fd6912bf12a05
+```
+
+To find the SHA for a given tag, visit `https://github.com/owner/repository/commits/TAG` and use the SHA of the first commit listed.
+
+### CI for Ruby gems
+
+Ruby gems must be tested against multiple Ruby and Rails versions using a build matrix:
+
+```yaml
+# .github/workflows/ci.yml
+on: [push, pull_request]
+
+jobs:
+  test_matrix:
+    strategy:
+      fail-fast: false
+      matrix:
+        ruby: [2.7, '3.0', 3.1]
+        gemfile: [rails_6, rails_7]
+    runs-on: ubuntu-latest
+    env:
+      BUNDLE_GEMFILE: gemfiles/${{ matrix.gemfile }}.gemfile
+    steps:
+      - uses: actions/checkout@v3
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: ${{ matrix.ruby }}
+          bundler-cache: true
+      - run: bundle exec rake
+
+  # Branch protection rules can't depend directly on matrix job status.
+  # Define a dummy 'test' job that runs after all matrix jobs pass.
+  test:
+    needs: test_matrix
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "All matrix tests have passed"
+
+  publish:
+    needs: test
+    if: ${{ github.ref == 'refs/heads/main' }}
+    permissions:
+      contents: write
+    uses: alphagov/govuk-infrastructure/.github/workflows/publish-rubygem.yaml@main
+    secrets:
+      GEM_HOST_API_KEY: ${{ secrets.ALPHAGOV_RUBYGEMS_API_KEY }}
+```
+
+Each Rails version needs a corresponding gemfile in a top-level `gemfiles/` directory:
+
+```ruby
+# gemfiles/rails_7.gemfile
+source "https://rubygems.org"
+
+gem "rails", "~> 7"
+
+gemspec path: "../"
+```

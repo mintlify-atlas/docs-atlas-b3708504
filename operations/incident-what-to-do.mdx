@@ -1,0 +1,112 @@
+---
+title: So, you're having an incident
+description: What to do when an incident occurs on GOV.UK — roles, communication, and step-by-step response guidance.
+---
+
+This page describes what to do when you are responding to an incident on GOV.UK. The full process is documented in the [GOV.UK Incident Management Google Doc](https://docs.google.com/document/d/1ty12B5eBWB9YSfnD9xY1mr5rtTQxdNxRdmEGgibilN0/edit).
+
+<Info>
+  If you are on the on-call rota, you should also prepare beforehand using the [GOV.UK Technical On-Call Support](/operations/on-call) page.
+</Info>
+
+## Before an incident happens
+
+Make sure you are prepared before your on-call shift starts:
+
+- Review the [on-call checklist](/operations/on-call#on-call-checklist) to confirm access to all required systems
+- Ensure PagerDuty is set up to reach you — see [Using PagerDuty](/operations/pagerduty)
+- Know how to post a [Statuspage message](/operations/post-a-statuspage-message)
+- Be familiar with the monitoring tools: [Grafana](https://grafana.eks.production.govuk.digital/dashboards), [Prometheus](https://prometheus.eks.production.govuk.digital/query), [Alertmanager](https://alertmanager.eks.production.govuk.digital/#/alerts), and [Logit](/operations/logit)
+
+## Incident response steps
+
+<Steps>
+  <Step title="Acknowledge the alert">
+    When PagerDuty pages you, acknowledge the alert to stop it escalating to the next person on the rota. This signals that someone is actively investigating.
+
+    If you cannot investigate immediately, do not acknowledge — let it escalate.
+  </Step>
+  <Step title="Assess severity">
+    Determine whether this is a real incident affecting users. Check:
+
+    - Is the GOV.UK homepage accessible?
+    - Are publishing tools (Whitehall Publisher, etc.) working?
+    - Are email alerts going out?
+    - Are Pingdom/Alertmanager alerts firing for known services?
+
+    Use [Grafana dashboards](https://grafana.eks.production.govuk.digital/dashboards) and [Kibana logs](/operations/kibana) to understand the scope of the problem.
+  </Step>
+  <Step title="Notify the team">
+    Post in the `#govuk-incident` Slack channel as soon as you identify a real incident. Include:
+
+    - What is affected
+    - What you know so far
+    - Whether you need help
+
+    The delivery manager on call should be informed so they can coordinate communications.
+  </Step>
+  <Step title="Post a Statuspage message">
+    If publishers or the public are affected, post an update on [status.publishing.service.gov.uk](https://status.publishing.service.gov.uk). See [Posting a Statuspage message](/operations/post-a-statuspage-message) for guidance on what to write.
+
+    Start with an "Investigating" status as soon as you know there is an issue — even before you know the cause.
+  </Step>
+  <Step title="Investigate and diagnose">
+    Work through the problem systematically. Useful tools:
+
+    - **[Grafana](https://grafana.eks.production.govuk.digital/dashboards)** — dashboards for request rates, error rates, and service health
+    - **[Kibana via Logit](/operations/logit)** — application and request logs
+    - **[Sentry](/operations/sentry)** — application errors grouped by project
+    - **[Alertmanager](https://alertmanager.eks.production.govuk.digital/#/alerts)** — currently firing alerts
+
+    Keep the `#govuk-incident` channel updated with what you're finding.
+  </Step>
+  <Step title="Escalate if needed">
+    If you can't diagnose or fix the problem on your own, escalate in PagerDuty to bring in the Secondary engineer. Stay online to support them and share what you've already found.
+
+    If neither Primary nor Secondary can resolve it, the final escalation goes to a senior member of GOV.UK.
+  </Step>
+  <Step title="Fix and monitor">
+    Once you've identified the fix, apply it and update the Statuspage to "Monitoring" status. Keep watching the dashboards and logs to confirm the issue is resolved.
+  </Step>
+  <Step title="Resolve and close">
+    When you are confident the incident is resolved:
+
+    - Update the Statuspage to "Resolved" status
+    - Post a final message in `#govuk-incident`
+    - Create an incident report (details in the [GOV.UK Incident Management Google Doc](https://docs.google.com/document/d/1ty12B5eBWB9YSfnD9xY1mr5rtTQxdNxRdmEGgibilN0/edit))
+  </Step>
+</Steps>
+
+## Common incident types
+
+<AccordionGroup>
+  <Accordion title="Site is down or returning errors">
+    Check the [GOV.UK homepage](https://www.gov.uk) and Pingdom alerts. Look at Grafana for error rate spikes. Check Kibana for recent errors across applications. Check Kubernetes pod status if you suspect a deployment issue.
+  </Accordion>
+  <Accordion title="Publishing is delayed or broken">
+    Check Whitehall and Publishing API logs in Kibana. Look for Alertmanager alerts about overdue publications. Check Sentry for errors in publishing apps. Background job queues may be backed up — check Sidekiq dashboards.
+  </Accordion>
+  <Accordion title="Email alerts not going out">
+    This is a `severity: page` alert. Check the email-alert-api application logs in Kibana and Sentry. Verify the Notify dashboard to see if messages are being sent.
+  </Accordion>
+  <Accordion title="High error rate from Router">
+    The RouterErrorRatioTooHigh alert will fire. Check Router logs in Kibana. Investigate whether a specific app is down or throwing 5xx errors by checking Grafana error rate dashboards and Sentry.
+  </Accordion>
+</AccordionGroup>
+
+## Communication guidance
+
+<CardGroup cols={2}>
+  <Card title="Statuspage" icon="globe" href="/operations/post-a-statuspage-message">
+    For publisher-facing and public-facing incidents. Write in plain English — avoid internal acronyms.
+  </Card>
+  <Card title="#govuk-incident Slack" icon="slack">
+    Internal coordination channel. Keep it updated throughout the incident with findings and actions taken.
+  </Card>
+  <Card title="#govuk-technical-on-call Slack" icon="bell">
+    For on-call coordination and handovers between Primary and Secondary.
+  </Card>
+  <Card title="SMT escalation" icon="phone">
+    Contact the on-call SMT member if the incident has wider government implications or requires a business decision.
+  </Card>
+</CardGroup>

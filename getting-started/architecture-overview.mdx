@@ -1,0 +1,109 @@
+---
+title: Architecture overview
+description: A high-level overview of how GOV.UK is built — CDN, routing, publishing pipeline, and the applications that power it.
+---
+
+GOV.UK is made up of many separate applications, most of them built in [Ruby on Rails](https://rubyonrails.org/), hosted on Kubernetes in AWS and deployed via [ArgoCD](https://argo-cd.readthedocs.io/en/stable/). The architecture is designed around two core journeys: **users reading content** and **publishers creating content**.
+
+<Info>
+  You can view the [full logical architecture diagram](https://viewer.diagrams.net/?tags=%7B%7D&highlight=0000ff&edit=https%3A%2F%2Fapp.diagrams.net%2F%23G1qTEpv2kCzghqZpUF86UyQj4o0dZ97gTm&layers=1&nav=1&title=GOV.UK%20Logical%20architecture%20diagram#Uhttps%3A%2F%2Fdrive.google.com%2Fuc%3Fid%3D1qTEpv2kCzghqZpUF86UyQj4o0dZ97gTm%26export%3Ddownload) in full screen. A more recent publishing-focused diagram is available on [Mural](https://app.mural.co/t/govukdelivery7534/m/govukdelivery7534/1732703920854/dbbca4b19d526e8e791c0b1e3972fe0ddb8cb28e).
+</Info>
+
+## When a user visits GOV.UK
+
+The journey of a user request from browser to page involves several layers:
+
+<CardGroup cols={2}>
+  <Card title="DNS" icon="network-wired">
+    `www.gov.uk` is a CNAME that ultimately resolves to `www-gov-uk.map.fastly.net`. Fastly responds with the IP of the cache node closest to the user.
+  </Card>
+  <Card title="CDN (Fastly)" icon="cloud">
+    Fastly handles the majority of requests — around 70% — from its cache, with a default cache time of one hour. This reduces load on GOV.UK origin significantly.
+  </Card>
+  <Card title="Load balancer and Router" icon="shuffle">
+    Requests that miss the CDN cache reach origin (AWS). Nginx on the cache machines proxies them to [Router](https://github.com/alphagov/router), a fast reverse proxy written in Go that maps URLs to frontend applications.
+  </Card>
+  <Card title="Frontend rendering" icon="display">
+    Router forwards the request to the appropriate Rails-based frontend app (e.g. [frontend](https://github.com/alphagov/frontend), [finder-frontend](https://github.com/alphagov/finder-frontend)), which fetches content from the Content Store and renders the HTML response.
+  </Card>
+</CardGroup>
+
+If Fastly receives a 5xx response from origin, it falls back to a static HTML mirror hosted in an AWS S3 bucket, which is updated daily by the [govuk-mirror](https://github.com/alphagov/govuk-mirror) crawler.
+
+## When a publisher publishes content
+
+GOV.UK operates two stacks — **draft** and **live** — which are parallel copies of the platform:
+
+<CardGroup cols={2}>
+  <Card title="Draft stack" icon="eye-slash">
+    The draft stack is where publishers preview content before it goes live. It is protected by [Authenticating Proxy](https://github.com/alphagov/authenticating-proxy), which requires a valid [Signon](https://github.com/alphagov/signon) session or a JWT token.
+  </Card>
+  <Card title="Live stack" icon="eye">
+    The live stack serves content to the public at www.gov.uk. It is the same architecture as the draft stack, minus the publishing applications and authentication proxy.
+  </Card>
+</CardGroup>
+
+Content flows through the platform as follows:
+
+1. A publisher edits content in a publishing application (Whitehall, Publisher, Specialist Publisher, etc.)
+1. The publishing app sends the content to [Publishing API](https://github.com/alphagov/publishing-api)
+1. Publishing API validates the content and writes it to the draft Content Store
+1. When the publisher clicks Publish, Publishing API writes to the live Content Store
+1. Router is notified of the new route and starts serving the content
+1. [Sidekiq](https://sidekiq.org/) background jobs place messages onto a [RabbitMQ](https://www.rabbitmq.com/) queue, triggering downstream actions such as cache purges and email alerts
+
+## Key applications
+
+<AccordionGroup>
+  <Accordion title="Publishing apps">
+    Publishing apps are used by editors to create and manage content. They are secured behind Signon.
+
+    Key examples:
+    - **Whitehall** — publishes ministerial content, news, speeches, consultations and statistics
+    - **Publisher** — publishes mainstream guidance and information
+    - **Specialist Publisher** — publishes specialist documents such as CMA cases and AAIB reports
+    - **Travel Advice Publisher** — publishes FCO travel advisories
+    - **Collections Publisher** — manages topic pages, step-by-step guides and document collections
+    - **Manuals Publisher** — publishes technical manuals such as the Highway Code
+  </Accordion>
+  <Accordion title="Frontend apps">
+    Frontend apps render pages to users on www.gov.uk. They read from the Content Store API.
+
+    Key examples:
+    - **frontend** — renders mainstream guide pages, the homepage and many standard page types
+    - **finder-frontend** — renders search results and finder pages
+    - **collections** — renders topic pages and browse pages
+    - **smart-answers** — renders interactive question-and-answer flows
+    - **email-alert-frontend** — manages email subscriptions
+  </Accordion>
+  <Accordion title="APIs and platform services">
+    APIs provide data and functionality to other applications.
+
+    Key examples:
+    - **Publishing API** — the single entry point for publishing content to GOV.UK
+    - **Content Store** — stores the latest edition of each piece of content and serves the Content API
+    - **Search API** — provides search results to finder-frontend and other apps
+    - **Asset Manager** — manages uploaded files (images, PDFs, etc.)
+    - **Email Alert API** — manages email subscriptions and sending
+    - **Router** — reverse proxy that maps URL paths to the correct frontend app
+    - **Signon** — single sign-on and authorisation for publishing apps
+  </Accordion>
+</AccordionGroup>
+
+## Infrastructure
+
+GOV.UK runs on AWS, using Kubernetes (EKS) to host applications. Key infrastructure components include:
+
+- **Fastly CDN** — handles edge caching and some routing (e.g. the redirect from `gov.uk` to `www.gov.uk`)
+- **AWS EKS** — Kubernetes clusters hosting GOV.UK applications
+- **AmazonMQ (RabbitMQ)** — message broker for asynchronous downstream processing
+- **AWS S3** — hosts the static mirror and stores uploaded assets
+- **govuk-helm-charts** — Helm chart configuration for all GOV.UK Kubernetes deployments
+- **ArgoCD** — GitOps-based continuous delivery for Kubernetes
+
+## Further reading
+
+- [Architectural deep-dive](/getting-started/architecture-deep-dive) — detailed walkthrough of each journey
+- [GOV.UK environments](/getting-started/environments) — integration, staging and production
+- [GOV.UK applications](/getting-started/apps) — the full list of apps
+- [Sign up for an Introduction to GOV.UK Architecture session](https://docs.google.com/spreadsheets/d/1pDQavKZoZbRpoprlouk5YDZWS6mjSw3ILvCYmFkGWwE/edit)

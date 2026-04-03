@@ -1,0 +1,238 @@
+---
+title: Set up a new Rails application
+description: Step-by-step guide to creating a new Ruby on Rails application following GOV.UK conventions.
+---
+
+Before you create a Ruby on Rails app, complete all steps in the GOV.UK developer get started documentation. You should develop your app in line with the [conventions for Rails applications](/development/conventions-for-rails-applications) and [naming conventions](/development/naming).
+
+## Create a new Rails app
+
+<Steps>
+  <Step title="Generate the Rails skeleton">
+    Run the following command on your local machine. The `--skip` flags exclude unneeded Rails components.
+
+    ```bash
+    rails new myapp --skip-javascript --skip-test --skip-bundle --skip-spring --skip-action-cable --skip-action-mailer --skip-active-storage
+    ```
+  </Step>
+
+  <Step title="Configure your Gemfile">
+    Replace the contents of `Gemfile` with the gems your app needs. A typical GOV.UK Rails app includes:
+
+    ```ruby
+    source "https://rubygems.org"
+
+    gem "rails", "6.0.3.4"
+
+    gem "bootsnap"
+    gem "gds-api-adapters"
+    gem "gds-sso"
+    gem "govuk_app_config"
+    gem "govuk_publishing_components"
+    gem "pg"
+    gem "plek"
+    gem "uglifier"
+
+    group :development do
+      gem "listen"
+    end
+
+    group :test do
+      gem "simplecov"
+    end
+
+    group :development, :test do
+      gem "byebug"
+      gem "govuk_test"
+      gem "rspec-rails"
+      gem "rubocop-govuk"
+    end
+    ```
+  </Step>
+
+  <Step title="Install gems and generate RSpec files">
+    Install the gems and generate the RSpec test scaffold:
+
+    ```bash
+    bundle && rails g rspec:install
+    ```
+  </Step>
+
+  <Step title="Remove the generated rails_helper">
+    GOV.UK convention is to merge the Rails helper into a single `spec_helper.rb` file:
+
+    ```bash
+    rm spec/rails_helper.rb
+    ```
+  </Step>
+
+  <Step title="Replace spec_helper.rb">
+    Replace the contents of `spec/spec_helper.rb` with the following:
+
+    ```ruby
+    ENV["RAILS_ENV"] ||= "test"
+
+    require "simplecov"
+    SimpleCov.start "rails"
+
+    require File.expand_path("../../config/environment", __FILE__)
+    require "rspec/rails"
+
+    Dir[Rails.root.join("spec/support/**/*.rb")].each { |f| require f }
+    GovukTest.configure
+
+    RSpec.configure do |config|
+      config.expose_dsl_globally = false
+      config.infer_spec_type_from_file_location!
+      config.use_transactional_fixtures = true
+    end
+    ```
+  </Step>
+
+  <Step title="Configure the database (if your app uses one)">
+    Replace `config/database.yml` with the following, substituting `<APP-NAME>` for your app's name:
+
+    ```yaml
+    default: &default
+      adapter: postgresql
+      encoding: unicode
+      pool: 12
+      template: template0
+
+    development:
+      <<: *default
+      database: <APP-NAME>_development
+      url: <%= ENV["DATABASE_URL"]%>
+
+    test:
+      <<: *default
+      database: <APP-NAME>_test
+      url: <%= ENV["TEST_DATABASE_URL"] %>
+
+    production:
+      <<: *default
+      database: <APP-NAME>_production
+      url: <%= ENV["DATABASE_URL"]%>
+    ```
+  </Step>
+
+  <Step title="Set up secrets">
+    Delete `config/credentials.yml.env` and `config/master.key`, then create `config/secrets.yml`:
+
+    ```yaml
+    development:
+      secret_key_base: secret
+
+    test:
+      secret_key_base: secret
+
+    production:
+      secret_key_base: <%= ENV['SECRET_KEY_BASE'] %>
+    ```
+
+    <Note>
+      Do not use Rails encrypted credentials. GOV.UK runs apps in "production" mode across multiple environments (integration, staging, production) and each needs different secrets injected via environment variables.
+    </Note>
+  </Step>
+
+  <Step title="Configure routes with healthcheck endpoints">
+    Replace `config/routes.rb` with the following. Every GOV.UK app must expose liveness and readiness healthcheck endpoints:
+
+    ```ruby
+    Rails.application.routes.draw do
+      get "/healthcheck/live", to: proc { [200, {}, %w[OK]] }
+      get "/healthcheck/ready", to: GovukHealthcheck.rack_response
+    end
+    ```
+  </Step>
+
+  <Step title="Configure the asset pipeline (if your app serves assets)">
+    Replace `config/initializers/assets.rb` with the following, using your app's repo name as `YOUR_APP_NAME`:
+
+    ```ruby
+    # Be sure to restart your server when you modify this file.
+
+    # Path within public/ where assets are compiled to
+    Rails.application.config.assets.prefix = "/assets/YOUR_APP_NAME"
+
+    # Version of your assets, change this if you want to expire all your assets.
+    Rails.application.config.assets.version = "1.0"
+    ```
+
+    Alternatively, configure this in `config/application.rb`:
+
+    ```ruby
+    module YourApp
+      class Application < Rails::Application
+        # Path within public/ where assets are compiled to
+        config.assets.prefix = "/assets/your-app"
+      end
+    end
+    ```
+  </Step>
+
+  <Step title="Configure linting">
+    Configure linting to keep your code consistent with other GOV.UK apps. See [configure linting](/development/configure-linting) for full instructions.
+  </Step>
+
+  <Step title="Set up the Puma web server">
+    Puma is already included in the `govuk_app_config` gem. Create `config/puma.rb`:
+
+    ```ruby
+    require "govuk_app_config/govuk_puma"
+    GovukPuma.configure_rails(self)
+    ```
+  </Step>
+
+  <Step title="Add a software licence">
+    Create a `LICENCE` file in the project root. GOV.UK projects use the MIT Licence:
+
+    ```
+    The MIT License (MIT)
+
+    Copyright (c) <YEAR> Crown Copyright (Government Digital Service)
+
+    Permission is hereby granted, free of charge, to any person obtaining a copy
+    of this software and associated documentation files (the "Software"), to deal
+    in the Software without restriction, including without limitation the rights
+    to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+    copies of the Software, and to permit persons to whom the Software is
+    furnished to do so, subject to the following conditions:
+
+    The above copyright notice and this permission notice shall be included in all
+    copies or substantial portions of the Software.
+
+    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+    SOFTWARE.
+    ```
+  </Step>
+
+  <Step title="Update the README">
+    Replace the default `README.md` with the standard GOV.UK README template.
+  </Step>
+
+  <Step title="Write API documentation (API apps only)">
+    If your app exposes an API, create a `docs/api.md` file following the GOV.UK guidance on writing API reference documentation.
+  </Step>
+</Steps>
+
+## Set up govuk-docker for local development
+
+Add your Rails app to GOV.UK Docker so you can run the app locally. See an [example GOV.UK Docker pull request](https://github.com/alphagov/govuk-docker/pull/465).
+
+Check that you can build your app and run the tests locally before proceeding.
+
+## Set up a GitHub repo
+
+Once you've finished developing your app locally, set up a GitHub repo. You must add a description to the **About** section in the GitHub repo — the GOV.UK developer documentation build will fail if this is missing.
+
+## Add your app to the GOV.UK developer documentation
+
+Open a pull request to add your Rails app to the `data/repos.yml` file in the `govuk-developer-docs` repository.
+
+If you want Slack alerts for issues during app deployment, provide a Slack channel name in `alerts_team`.

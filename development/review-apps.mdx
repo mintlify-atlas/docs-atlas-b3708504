@@ -1,0 +1,122 @@
+---
+title: Review apps
+description: How to set up Heroku review apps for GOV.UK pull requests, so reviewers can see running changes with live data before merging.
+---
+
+[Review apps](https://devcenter.heroku.com/articles/github-integration-review-apps) automatically deploy application changes into a fresh Heroku app for each pull request. This gives reviewers a running version of the change backed by live data, without needing to run the app locally.
+
+GOV.UK apps with review apps enabled include:
+
+- [collections](https://github.com/alphagov/collections)
+- [frontend](https://github.com/alphagov/frontend)
+- [govuk-developer-docs](https://github.com/alphagov/govuk-developer-docs)
+- [smart-answers](https://github.com/alphagov/smart-answers)
+
+## Set up review apps for a GOV.UK application
+
+### Use the shared Heroku account
+
+GOV.UK has a shared Heroku account that should own both the app and the associated pipeline for deploying review apps. Contact `#govuk-ask-platform-engineering` for access.
+
+### Create a new Heroku app
+
+Log in to Heroku and create a new application in the **European** availability zone. Name it to closely match the application name on GitHub.
+
+### Configure the app to run on Heroku
+
+Three things must be in place before deploying to Heroku:
+
+<Steps>
+  <Step title="Add a Procfile">
+    Create a `Procfile` at the root of the repository that tells Heroku how to start the app. For a standard Rails application:
+
+    ```
+    web: bin/rails server -p $PORT -e $RAILS_ENV
+    ```
+  </Step>
+
+  <Step title="Add an app.json file">
+    Create an `app.json` file at the root of the repository. This defines environment variables, buildpacks, and add-ons. A standard Rails app configuration:
+
+    ```json
+    {
+      "name": "govuk-app",
+      "repository": "https://github.com/alphagov/govuk-app",
+      "env": {
+        "GOVUK_APP_DOMAIN": {
+          "value": "www.gov.uk"
+        },
+        "GOVUK_WEBSITE_ROOT": {
+          "value": "https://www.gov.uk"
+        },
+        "PLEK_SERVICE_CONTENT_STORE_URI": {
+          "value": "https://www.gov.uk/api"
+        },
+        "PLEK_SERVICE_SEARCH_URI": {
+          "value": "https://www.gov.uk/api"
+        },
+        "PLEK_SERVICE_STATIC_URI": {
+          "value": "assets.digital.cabinet-office.gov.uk"
+        },
+        "RAILS_SERVE_STATIC_ASSETS": {
+          "value": "yes"
+        },
+        "SECRET_KEY_BASE": {
+          "generator": "secret"
+        },
+        "HEROKU_APP_NAME": {
+          "required": true
+        }
+      },
+      "image": "heroku/ruby",
+      "buildpacks": [
+        {
+          "url": "https://github.com/heroku/heroku-buildpack-ruby"
+        }
+      ],
+      "addons": []
+    }
+    ```
+
+    See the `app.json` files for [collections](https://github.com/alphagov/collections/blob/main/app.json) and [frontend](https://github.com/alphagov/frontend/blob/main/app.json) for real examples with additional environment variables. See the [Heroku Dev Center app.json schema](https://devcenter.heroku.com/articles/app-json-schema) for full documentation.
+  </Step>
+
+  <Step title="Pin the Ruby version in the Gemfile">
+    Ensure the Gemfile reads the Ruby version from `.ruby-version` to match the version used in GOV.UK infrastructure:
+
+    ```ruby
+    ruby File.read('.ruby-version').chomp
+    ```
+
+    See [smart-answers](https://github.com/alphagov/smart-answers/blob/release_3739/Gemfile#L3) for an example.
+  </Step>
+</Steps>
+
+<Note>
+  Each app has a different set of dependencies, so the environment variables required in `app.json` will vary. You need at least one successful deploy with correct configuration before review apps will work.
+</Note>
+
+### Choose a Heroku dyno plan
+
+Go to the app's **Resources** tab in Heroku and click **Change dyno type**:
+
+- **Eco plan** — suitable for most apps. Shares dyno hours with other apps on the Eco plan. If hours run out, all Eco apps stop.
+- **Basic plan** — use if the app will be accessed frequently. Prevents downtime caused by exhausted Eco dyno hours.
+
+### Create a Heroku pipeline and enable review apps
+
+<Steps>
+  <Step title="Deploy the app successfully">
+    Ensure at least one successful deployment of the app to Heroku and that the `app.json` file is committed and merged to `main`.
+  </Step>
+
+  <Step title="Create a new pipeline on Heroku">
+    In Heroku, create a new pipeline and enable **automatic review apps** when prompted.
+  </Step>
+
+  <Step title="Verify with a test PR">
+    Open a test pull request. A new review app should be created automatically from the `app.json` template, and a link should be posted to the pull request on GitHub.
+  </Step>
+</Steps>
+
+Once set up, every new pull request on the GOV.UK application will automatically get its own isolated review app deployed from the `app.json` template.

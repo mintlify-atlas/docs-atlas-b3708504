@@ -1,0 +1,134 @@
+---
+title: Architectural deep-dive
+description: A detailed walkthrough of what happens when a user visits a GOV.UK page, a publisher publishes, and a developer deploys a change.
+---
+
+We can cover a lot of GOV.UK architecture by asking three questions:
+
+1. What happens when a user visits a page on GOV.UK?
+2. What happens when a publisher hits Publish?
+3. What happens when a developer deploys a change to an application?
+
+For a shorter, non-technical summary, see the [architecture overview](/getting-started/architecture-overview).
+
+---
+
+## 1. What happens when a user visits a page on GOV.UK?
+
+### DNS
+
+The browser queries a local DNS server to resolve the domain name to an IP address. The local DNS server may answer from cache; if not, it queries the authoritative name servers for the domain.
+
+`gov.uk` is a country-code second-level domain (ccSLD). Its authoritative servers are hosted by [Jisc](https://www.jisc.ac.uk/domain-registry). `www.gov.uk` is a CNAME record that ultimately resolves to `www-gov-uk.map.fastly.net`. Fastly's nameservers aim to respond with the IP address of the Fastly cache node closest to the user.
+
+### CDN and caching
+
+GOV.UK uses [Fastly](https://www.fastly.com/) as its content delivery network. Fastly:
+
+- handles the majority of requests, reducing load on GOV.UK origin by around 70%
+- uses [Varnish](https://varnish-cache.org/) for caching with a default cache time of one hour
+- serves from edge nodes that are closer to end users, particularly those outside the UK
+
+If Fastly does not have a page cached, it fetches it from origin. Caches can be purged — Fastly will soft-purge a cached version, replacing it with the new version once received from origin.
+
+#### Failover
+
+If a Fastly request to origin returns a 5xx response, Fastly falls back to a static HTML mirror hosted in an AWS S3 bucket. The mirror is updated daily by the [govuk-mirror](https://github.com/alphagov/govuk-mirror) crawler, which recursively visits GOV.UK URLs from a message queue and saves the output.
+
+#### Routing on the CDN
+
+Varnish is also used for the redirect from `gov.uk` to `www.gov.uk`, configured in Varnish Configuration Language (VCL) uploaded to Fastly via [govuk-cdn-config](https://github.com/alphagov/govuk-cdn-config).
+
+[Bouncer](https://github.com/alphagov/bouncer) handles redirects from old pre-GOV.UK websites at the Fastly level, configured via [transition](https://github.com/alphagov/transition).
+
+### Routing on GOV.UK origin
+
+Requests that reach origin hit a load balancer, which routes them to the correct machine class based on hostname. Different classes of machine run different sets of GOV.UK applications.
+
+On the cache machine, [Nginx](https://www.nginx.com/) receives the request. Some routes — such as asset URLs — are proxied directly to other apps (e.g. asset-manager). Most requests are proxied by Nginx to a local Varnish instance. If Varnish has the response cached, it returns it; otherwise the request is proxied to [Router](https://github.com/alphagov/router).
+
+#### Router
+
+Router is a reverse proxy written in Go. It stores all known routes in memory using a prefix trie, loaded from a database. Routes are reloaded periodically or triggered by LISTEN/NOTIFY notifications from the Content Store Postgres database.
+
+Routes have different handlers:
+
+- `gone` — returns a 410 Gone response (for deleted content)
+- `redirect` — returns a 301 Moved Permanently response (for superseded content)
+- `backend` — forwards the request to the relevant frontend application based on the route's `backend_id`
+
+### Rendering
+
+Once Router forwards the request to the correct frontend app (typically a Rails application), the app maps the URL to a controller using `routes.rb`. The controller fetches the content from the [Content Store](https://github.com/alphagov/content-store) via its API and renders the HTML response.
+
+For dynamic collections (such as search results), content is retrieved via [search-api](https://github.com/alphagov/search-api) rather than Content Store directly.
+
+#### Static assets
+
+GOV.UK pages are constructed from components defined in [govuk_publishing_components](https://components.publishing.service.gov.uk/component-guide). Static JavaScript and CSS is served from `assets.publishing.service.gov.uk`. Custom assets (images, PDFs) uploaded by content designers are also served from this domain and stored in an AWS S3 bucket, managed by [asset-manager](https://github.com/alphagov/asset-manager).
+
+---
+
+## 2. What happens when a publisher hits Publish?
+
+### Draft and live stacks
+
+GOV.UK operates two parallel stacks: **draft** and **live**. Both stacks contain the same set of applications. The draft stack additionally runs the publishing apps and is protected by [Authenticating Proxy](https://github.com/alphagov/authenticating-proxy), which requires a valid [Signon](https://github.com/alphagov/signon) session or a `auth_bypass_id` token.
+
+You can access the live stack at origin by replacing `www` with `www-origin` in the URL (only accessible from office IPs, VPN, or Fastly IPs). The draft stack is accessible at `draft-origin`.
+
+[Signon](https://github.com/alphagov/signon) is both an authentication provider and an authorisation system — publishing apps can query it to check whether the current user has permission to perform a given action.
+
+### Publishing API and Content Store
+
+Content on GOV.UK is stored in [Content Store](https://github.com/alphagov/content-store), which holds only the **latest edition** of each piece of content. Content is retrieved via the Content API.
+
+Content is published via [Publishing API](https://github.com/alphagov/publishing-api), which:
+
+- stores **all editions** of every document
+- validates each new edition against the JSON schema for its `schema_name`
+- publishes automatically to the **draft** Content Store on every save
+- publishes to the **live** Content Store only when the publisher explicitly chooses to publish
+
+**Link expansion** — the process of embedding related content items (e.g. parent breadcrumbs, organisation details) into a single JSON payload — happens in Publishing API before sending content downstream to Content Store.
+
+### Downstream background processing
+
+After publishing, [Sidekiq](https://sidekiq.org/) background jobs place messages onto a [RabbitMQ](https://www.rabbitmq.com/) queue (managed via [AmazonMQ](https://aws.amazon.com/amazon-mq/)). Multiple consumers listen to this queue and take action, for example:
+
+- [Search API](https://github.com/alphagov/search-api) updates its search indexes
+- [Email Alert Service](https://github.com/alphagov/email-alert-service) sends emails to subscribed users
+
+<Note>
+  Travel Advice Publisher and Specialist Publisher communicate directly with email-alert-api to ensure emails go out immediately rather than via the queue.
+</Note>
+
+#### High and low priority queues
+
+Updating one content item often requires updating other content items that link to it. A single change can trigger updates across thousands of items.
+
+To ensure directly-changed content is updated quickly, GOV.UK uses **high** and **low** priority queues. The main content item is processed on the high priority queue; indirectly affected content items are processed on the low priority queue, which takes longer due to volume.
+
+The process of finding all content items affected by a change is called [dependency resolution](https://github.com/alphagov/publishing-api/blob/main/docs/dependency-resolution.md).
+
+---
+
+## 3. What happens when a developer deploys a change?
+
+### Environments
+
+GOV.UK has three environments hosted in AWS, each containing a copy of both the draft and live stacks:
+
+- **Production** — serves the public
+- **Staging** — gate for automatic promotion of new releases to production
+- **Integration** — used for manual testing and automated end-to-end tests
+
+Nightly cron jobs copy data from production to staging, and from staging to integration. This provides automated restore testing and gives developers realistic data to work with. Some data — such as email addresses and unpublished draft content — is redacted before copying to integration.
+
+### Release and rollout automation
+
+New application versions are automatically tested in the integration environment via end-to-end tests in [govuk-e2e-tests](https://github.com/alphagov/govuk-e2e-tests). A passing run in integration is the gate for automatic promotion to staging, and staging is the gate for promotion to production.
+
+The [Release app](https://release.publishing.service.gov.uk/) tracks which version of each application is deployed to each environment.
+
+See the [GOV.UK development and deployment pipeline](https://docs.publishing.service.gov.uk/manual/development-pipeline.html) for full details.

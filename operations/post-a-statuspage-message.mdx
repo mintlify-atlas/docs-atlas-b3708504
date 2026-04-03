@@ -1,0 +1,109 @@
+---
+title: Posting a Statuspage message
+description: How to post and update incident messages on the GOV.UK status page during an incident.
+---
+
+When something goes wrong on GOV.UK, we update our status page at [status.publishing.service.gov.uk](https://status.publishing.service.gov.uk) as part of our [incident management procedure](/operations/incident-what-to-do).
+
+The page is managed using a third-party service called [Statuspage](https://statuspage.io), administered at [manage.statuspage.io](https://manage.statuspage.io).
+
+<Warning>
+  Government publishers are the main audience of the status page. Write in plain, non-technical language. Avoid internal acronyms — for example, write "data.gov.uk" instead of "DGU".
+</Warning>
+
+## Access Statuspage
+
+Log into [manage.statuspage.io](https://manage.statuspage.io) with your Google account to post messages.
+
+Access is granted manually by invitation, typically once permanent Production Admin access is approved and merged to the [GOV.UK user reviewer](https://github.com/alphagov/govuk-user-reviewer) repository.
+
+If you should have access but don't, ask your (civil servant) tech lead or a Senior Tech member.
+
+## Creating an incident
+
+### Incident name
+
+The incident name should identify which part of the service is affected and what the fault is. You can update the name, but keep it consistent enough to track throughout the stages of the incident.
+
+<Tip>
+  If a non-user-facing application (such as Publishing API or Content Store) is the affected component, don't include the application name. Instead, describe the user-facing impact. For example, use "Delay in publishing content" rather than "Publishing API is processing items slowly".
+</Tip>
+
+Example names:
+
+- `Delay in publishing content`
+- `Attachments aren't uploading`
+- `Search isn't working on GOV.UK`
+
+### Incident status
+
+When you list an incident, select an incident status that reflects where you are in the response. Update the status as the incident progresses.
+
+<AccordionGroup>
+  <Accordion title="Investigating" defaultOpen={true}>
+    Use this status to reassure publishers that you know about the problem and are working to diagnose it.
+
+    **Example messages:**
+
+    > We're looking into an issue with Whitehall Publisher which is causing attachment uploads to fail. We'll update this page as soon as we know what's causing it.
+
+    > We're looking into a delay that's occurring when trying to publish new content. Your content may appear on the site later than usual.
+
+    > We're looking into a problem that means email alerts aren't being sent out as quickly as they should. We'll update this page as soon as we know what's causing it.
+  </Accordion>
+  <Accordion title="Identified">
+    Use this status once you've found the cause. Explain the problem in simple terms and provide an estimated time to fix.
+
+    **Example messages:**
+
+    > We've found the problem causing the delay in publishing content — it's caused by the server running too many tasks. We're working on fixing it and expect it to take approximately 3 hours.
+
+    > We've found out what's causing the delay to email alerts. There was an error which made the email queue artificially long. We expect it to take one hour to fix.
+  </Accordion>
+  <Accordion title="Monitoring">
+    Use this status once you've applied a fix and are keeping an eye on it to confirm it's fully resolved. State whether there will be a delay before the fix is visible to users.
+
+    **Example messages:**
+
+    > We've fixed the problem that was delaying publishing. We're going to keep an eye on it for the next hour to make sure it's resolved.
+
+    > We've fixed the problem that was delaying email alerts. We're going to keep an eye on it for the next 2 hours to make sure it's resolved.
+  </Accordion>
+  <Accordion title="Resolved">
+    Use this status when the incident is fully closed and everything is back to normal.
+
+    **Example messages:**
+
+    > The delay in publishing content has been solved. Content will appear on the site as normal.
+
+    > The problem with the email queue has been fixed. Email alerts should now be working normally.
+
+    > The problem with the server running too many tasks has been fixed. Attachment uploads should now be back to normal.
+
+    > The issues we were having with search on GOV.UK have been fixed. Everything should now be working as normal.
+  </Accordion>
+</AccordionGroup>
+
+## Posting a retrospective update (backfilling)
+
+Sometimes it may be necessary to post a status update after an incident has already been resolved.
+
+<Steps>
+  <Step title="Tick the backfill option">
+    When creating an incident, tick the `backfill` checkbox.
+  </Step>
+  <Step title="Set the date and write the message">
+    Add the date of the incident and a suitable description. The message will automatically be marked as resolved.
+
+    **Example message:**
+
+    > On 30 to 31 May 2022 users of GOV.UK were unable to subscribe and unsubscribe from email alerts to page changes.
+  </Step>
+  <Step title="Create the entry">
+    Click "Create". Note that backfilled updates do not notify subscribers, but they will update relevant Slack channels.
+  </Step>
+</Steps>
+
+<Note>
+  When backfilling a status update, subscribers will not be notified by email or SMS. The update will still appear on the status page and update relevant Slack channels.
+</Note>

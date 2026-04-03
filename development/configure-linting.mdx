@@ -1,0 +1,159 @@
+---
+title: Configure linting
+description: How to set up Ruby, JavaScript, and SCSS linting for a GOV.UK Rails application using rubocop-govuk, standardx, and stylelint-config-gds.
+---
+
+This guide explains how to configure linting for a GOV.UK Rails application. The approaches can be adapted to non-Rails applications with minor adjustments.
+
+## Linting Ruby
+
+GOV.UK uses [rubocop-govuk](https://github.com/alphagov/rubocop-govuk) to lint Ruby projects. It provides GOV.UK-specific rules for Ruby, Rails, RSpec, and Rake, built on top of RuboCop.
+
+<Steps>
+  <Step title="Add rubocop-govuk to your Gemfile">
+    Add the gem to your `development, test` group:
+
+    ```ruby
+    group :development, :test do
+      gem "rubocop-govuk"
+    end
+    ```
+  </Step>
+
+  <Step title="Create a .rubocop.yml file">
+    Create a `.rubocop.yml` file in the root of your project:
+
+    ```yaml
+    inherit_gem:
+      rubocop-govuk:
+        - config/default.yml
+        - config/rails.yml
+        - config/rake.yml
+        - config/rspec.yml
+
+    inherit_mode:
+      merge:
+        - Exclude
+
+    # **************************************************************
+    # TRY NOT TO ADD OVERRIDES IN THIS FILE
+    #
+    # This repo is configured to follow the RuboCop GOV.UK styleguide.
+    # Any rules you override here will cause this repo to diverge from
+    # the way we write code in all other GOV.UK repos.
+    #
+    # See https://github.com/alphagov/rubocop-govuk/blob/main/CONTRIBUTING.md
+    # **************************************************************
+    ```
+
+    <Warning>
+      Avoid adding overrides to `.rubocop.yml`. Overrides cause your repo to diverge from GOV.UK coding standards. If you think a rule should change, raise it with the rubocop-govuk maintainers.
+    </Warning>
+  </Step>
+
+  <Step title="Install and run">
+    ```bash
+    bundle install
+    bundle exec rubocop
+    ```
+  </Step>
+</Steps>
+
+## Linting JavaScript and SCSS
+
+GOV.UK follows the [GDS Way](https://gds-way.digital.cabinet-office.gov.uk/) guidance for linting JavaScript and CSS. This uses [standardx](https://github.com/standard/standardx) for JavaScript and [stylelint-config-gds](https://github.com/alphagov/stylelint-config-gds) for SCSS.
+
+<Steps>
+  <Step title="Install Yarn">
+    [Install Yarn](https://classic.yarnpkg.com/en/docs/install/) if you haven't already. GOV.UK Rails applications use Yarn for JavaScript package management.
+  </Step>
+
+  <Step title="Create a package.json file">
+    Create a `package.json` file in your project root:
+
+    ```json
+    {
+      "name": "My application",
+      "description": "A brief description of the application's purpose",
+      "private": true,
+      "author": "Government Digital Service",
+      "license": "MIT",
+      "scripts": {
+        "lint": "yarn run lint:js && yarn run lint:scss",
+        "lint:js": "standard 'app/assets/javascripts/**/*.js' 'spec/javascripts/**/*.js'",
+        "lint:scss": "stylelint app/assets/stylesheets/"
+      },
+      "standardx": {
+        "env": {
+          "browser": true
+        }
+      },
+      "eslintConfig": {
+        "rules": {
+          "no-var": 0
+        }
+      },
+      "stylelint": {
+        "extends": "stylelint-config-gds/scss"
+      }
+    }
+    ```
+  </Step>
+
+  <Step title="Install the linting dependencies">
+    ```bash
+    yarn add --dev standard stylelint stylelint-config-gds
+    ```
+  </Step>
+
+  <Step title="Test the linting">
+    ```bash
+    yarn run lint
+    ```
+  </Step>
+
+  <Step title="Update .gitignore">
+    Add the following to your `.gitignore` file to exclude generated files:
+
+    ```
+    node_modules
+    yarn-error.log
+    ```
+  </Step>
+</Steps>
+
+## Configuring the Rails Rake task
+
+To make linting easy to run as part of the standard development workflow, create a Rake task and include it in the default task.
+
+<Steps>
+  <Step title="Create a lint Rake task">
+    Create `lib/tasks/lint.rake`:
+
+    ```ruby
+    desc "Run all linters"
+    task lint: :environment do
+      sh "bundle exec rubocop"
+      sh "yarn run lint" # lint JS and SCSS
+    end
+    ```
+  </Step>
+
+  <Step title="Add linting to the default Rake task">
+    Update your `Rakefile` to run linting alongside specs as the default task:
+
+    ```ruby
+    # Undo any existing default tasks added by dependencies so we can redefine the task
+    Rake::Task[:default].clear if Rake::Task.task_defined?(:default)
+    task default: %i[lint spec]
+    ```
+  </Step>
+
+  <Step title="Verify the setup">
+    Run the default Rake task to confirm linting runs before the test suite:
+
+    ```bash
+    bundle exec rake
+    ```
+  </Step>
+</Steps>

@@ -1,0 +1,105 @@
+---
+title: GOV.UK applications
+description: An overview of the GOV.UK application estate — frontend apps, publishing apps, APIs and supporting services.
+---
+
+GOV.UK consists of many separate applications. Most are built using [Ruby on Rails](https://rubyonrails.org/), hosted on Kubernetes, configured using [govuk-helm-charts](https://github.com/alphagov/govuk-helm-charts) and deployed using [ArgoCD](https://argo-cd.readthedocs.io/en/stable/).
+
+Each application is owned by a team. You can use the [GOV.UK browser extension](https://github.com/alphagov/govuk-browser-extension) to find out which application is rendering any given page on GOV.UK.
+
+## Application types
+
+<CardGroup cols={2}>
+  <Card title="Frontend apps" icon="globe">
+    Render pages to users visiting www.gov.uk. They read content from the Content Store API and render HTML responses.
+  </Card>
+  <Card title="Publishing apps" icon="pencil">
+    Used by editors to create, edit and publish content to GOV.UK. Secured behind the [Signon](https://github.com/alphagov/signon) single sign-on system.
+  </Card>
+  <Card title="APIs" icon="plug">
+    Provide data and functionality to other applications. Not directly user-facing.
+  </Card>
+  <Card title="Supporting apps" icon="gear">
+    Internal tools and infrastructure applications, such as Router, Signon and the Release app.
+  </Card>
+</CardGroup>
+
+---
+
+## Frontend apps
+
+Frontend apps render content to users. They receive requests from [Router](https://github.com/alphagov/router) and typically fetch content from the [Content Store API](https://www.gov.uk/api/content).
+
+| Application | Description |
+|---|---|
+| [frontend](https://github.com/alphagov/frontend) | Renders mainstream guide pages, the GOV.UK homepage, transaction start pages and many standard content formats |
+| [finder-frontend](https://github.com/alphagov/finder-frontend) | Renders search results pages, finder pages and the main GOV.UK search |
+| [collections](https://github.com/alphagov/collections) | Renders topic pages, browse pages, taxon pages and step-by-step navigation |
+| [smart-answers](https://github.com/alphagov/smart-answers) | Renders interactive question-and-answer flows |
+| [email-alert-frontend](https://github.com/alphagov/email-alert-frontend) | Manages email subscriptions for GOV.UK topic alerts |
+| [feedback](https://github.com/alphagov/feedback) | Renders the GOV.UK feedback forms ("Is this page useful?") |
+
+---
+
+## Publishing apps
+
+Publishing apps are used by GOV.UK content editors. They communicate with [Publishing API](https://github.com/alphagov/publishing-api) to create, validate and publish content.
+
+| Application | Description |
+|---|---|
+| [whitehall](https://github.com/alphagov/whitehall) | Publishes ministerial content, news, speeches, consultations, statistics and organisational information |
+| [publisher](https://github.com/alphagov/publisher) | Publishes mainstream guidance — the most common content type on GOV.UK |
+| [specialist-publisher](https://github.com/alphagov/specialist-publisher) | Publishes specialist documents (CMA cases, AAIB reports, etc.) |
+| [travel-advice-publisher](https://github.com/alphagov/travel-advice-publisher) | Publishes FCO country travel advisories |
+| [collections-publisher](https://github.com/alphagov/collections-publisher) | Manages topic pages, document collections and step-by-step guides |
+| [manuals-publisher](https://github.com/alphagov/manuals-publisher) | Publishes technical manuals such as the Highway Code |
+| [content-block-manager](https://github.com/alphagov/content-block-manager) | Manages reusable content blocks embedded across multiple pages |
+| [service-manual-publisher](https://github.com/alphagov/service-manual-publisher) | Publishes the GOV.UK Service Manual |
+| [short-url-manager](https://github.com/alphagov/short-url-manager) | Creates short, memorable redirect URLs often used in media campaigns |
+
+---
+
+## APIs
+
+APIs provide data and functionality to other applications in the stack.
+
+| Application | Description |
+|---|---|
+| [publishing-api](https://github.com/alphagov/publishing-api) | The central API for publishing content to GOV.UK. Validates content and manages the draft/live lifecycle |
+| [content-store](https://github.com/alphagov/content-store) | Stores the latest edition of each content item and serves the Content API at `www.gov.uk/api/content` |
+| [search-api](https://github.com/alphagov/search-api) | Provides search results for GOV.UK, updated from the RabbitMQ publishing queue |
+| [search-api-v2](https://github.com/alphagov/search-api-v2) | Next generation of the search API |
+| [asset-manager](https://github.com/alphagov/asset-manager) | Manages uploaded files (images, PDFs, attachments) and serves them via `assets.publishing.service.gov.uk` |
+| [email-alert-api](https://github.com/alphagov/email-alert-api) | Manages email alert subscriptions and sending |
+| [account-api](https://github.com/alphagov/account-api) | Provides GOV.UK account functionality |
+| [link-checker-api](https://github.com/alphagov/link-checker-api) | Checks for broken links in content |
+| [content-data-api](https://github.com/alphagov/content-data-api) | Provides data about content performance |
+| [locations-api](https://github.com/alphagov/locations-api) | Provides UK location data for local links and place-based services |
+
+---
+
+## Supporting apps
+
+| Application | Description |
+|---|---|
+| [router](https://github.com/alphagov/router) | Reverse proxy that maps URL paths to frontend applications, written in Go |
+| [signon](https://github.com/alphagov/signon) | Single sign-on and authorisation system for GOV.UK publishing apps |
+| [release](https://github.com/alphagov/release) | Tracks which version of each application is deployed to each environment |
+| [authenticating-proxy](https://github.com/alphagov/authenticating-proxy) | Protects the draft stack by requiring Signon authentication |
+| [bouncer](https://github.com/alphagov/bouncer) | Handles redirects from old pre-GOV.UK websites |
+| [search-admin](https://github.com/alphagov/search-admin) | Admin interface for managing search configuration |
+
+---
+
+## Data download
+
+Application data is available as JSON or CSV:
+
+- [apps.json](https://docs.publishing.service.gov.uk/apps.json) / [apps.csv](https://docs.publishing.service.gov.uk/apps.csv) — hosted applications only
+- [repos.json](https://docs.publishing.service.gov.uk/repos.json) / [repos.csv](https://docs.publishing.service.gov.uk/repos.csv) — all repositories
+
+In Google Sheets, import application data with:
+
+```text
+=importData("https://docs.publishing.service.gov.uk/apps.csv")
+```

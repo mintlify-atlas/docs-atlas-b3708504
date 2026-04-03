@@ -1,0 +1,64 @@
+---
+title: How GOV.UK uses GitHub
+description: An overview of GOV.UK's GitHub organisation, teams, access levels, and how GitHub is used for CI/CD and deployment.
+---
+
+GOV.UK uses GitHub for version control, code deployments, authentication, CI, Dependabot, and GitHub Pages. The platform relies heavily on GitHub features — see the [GOV.UK reliance on GitHub features](https://docs.google.com/document/d/1KsYWCHSQZEwqB2NF1A7Z9rmP1s1azcZhEamaPsXAoxk/edit) doc for the full picture.
+
+When creating a new repository, follow the [instructions for creating and configuring a new GOV.UK repository](/development/github-new-repo).
+
+## Our GitHub organisation
+
+GOV.UK's GitHub organisation is [alphagov](https://github.com/alphagov), shared with other teams in the Government Digital Service (GDS).
+
+The organisation is on the **Enterprise Cloud plan**, which grants access to GitHub's enterprise support. Only [people with enterprise permissions](https://github.com/orgs/alphagov/people/enterprise_owners) can access that support (limited to enterprise owners and up to 20 additional members).
+
+[GDS GitHub Owners](https://groups.google.com/a/digital.cabinet-office.gov.uk/g/gds-github-owners) have superadmin access to alphagov. Contact them to:
+
+- Request changes to [organisation settings](https://docs.github.com/en/organizations/managing-organization-settings)
+- Request access to a repository that is inaccessible (e.g. created by an ex-employee)
+
+## GOV.UK teams in GitHub
+
+<CardGroup cols={2}>
+  <Card title="GOV.UK" icon="users" href="https://github.com/orgs/alphagov/teams/gov-uk">
+    Grants write access to GOV.UK repos and integration admin access to the CI environment.
+  </Card>
+  <Card title="GOV.UK Production Deploy" icon="rocket" href="https://github.com/orgs/alphagov/teams/gov-uk-production-deploy">
+    Grants the ability to merge PRs against continuously deployed apps and deploy apps to staging and production.
+  </Card>
+  <Card title="GOV.UK Production Admin" icon="shield" href="https://github.com/orgs/alphagov/teams/gov-uk-production-admin">
+    Grants admin access to GOV.UK repos and admin access to a number of other tools.
+  </Card>
+  <Card title="GOV.UK Content Designers" icon="pen" href="https://github.com/orgs/alphagov/teams/gov-uk-content-designers">
+    Allows users to create branches and open pull requests. Only developers can merge. Only content designers should be added to this team.
+  </Card>
+</CardGroup>
+
+## Getting access to GitHub
+
+Access is managed through Terraform in [govuk-user-reviewer](https://github.com/alphagov/govuk-user-reviewer) — **not** manually through the GitHub UI, as this breaks the Terraform setup. You must accept the email invite before you're added to the organisation.
+
+<AccordionGroup>
+  <Accordion title="Engineers and contractors">
+    Ask your tech lead to add you by following the instructions in [govuk-user-reviewer](https://github.com/alphagov/govuk-user-reviewer).
+  </Accordion>
+  <Accordion title="No tech lead">
+    Ask someone in [Senior Tech](/getting-started/ask-for-help) to add you.
+  </Accordion>
+  <Accordion title="Content designers">
+    Request GitHub access via Zendesk. Include the `govuk_platform_support` tag.
+  </Accordion>
+</AccordionGroup>
+
+When requesting access without a tech lead, or as a content designer, you must state:
+
+- Your role
+- Which team you're in
+- Why you need access
+- Your GitHub username
+- Which [GitHub team(s)](#gov-uk-teams-in-github) you should join
+
+## Removing access to GitHub
+
+Users are removed from the GitHub organisation when their entry in [govuk-user-reviewer](https://github.com/alphagov/govuk-user-reviewer) is deleted.

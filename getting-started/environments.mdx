@@ -1,0 +1,114 @@
+---
+title: GOV.UK environments
+description: The GOV.UK environments — local, integration, staging and production — their purposes and how they differ.
+---
+
+GOV.UK has several environments with different purposes. By _environment_, we mean:
+
+- a self-contained, running instance of all the software components of GOV.UK
+- the AWS account and VPC network hosting that instance
+- the configuration (settings) for that instance
+
+There are three GOV.UK environments hosted in AWS — integration, staging and production — plus local development environments on individual machines.
+
+The [Release dashboard](https://release.publishing.service.gov.uk/) shows which application versions have been rolled out to each environment.
+
+## Environments at a glance
+
+| Environment | Hosted on | Purpose | Public-facing? |
+|---|---|---|---|
+| Local | Developer laptop | Day-to-day development | No |
+| Integration | AWS | Manual testing, automated end-to-end tests | No |
+| Staging | AWS | Infrastructure changes, performance testing, deployment gate | GDS network / VPN only |
+| Production | AWS | Serving content to the public | Yes |
+
+---
+
+## Local development
+
+Software developers working on GOV.UK generally use [govuk-docker](https://github.com/alphagov/govuk-docker/) or run applications directly on their machines alongside local copies of the necessary databases.
+
+`GovukEnvironment.current` (from [govuk_app_config](https://github.com/alphagov/govuk_app_config)) returns `"local"` in this environment.
+
+<Tip>
+  In future, [govuk-helm-charts](https://github.com/alphagov/govuk-helm-charts/) aims to support running the full GOV.UK stack locally, making it easier for new contributors to get started and enabling open-source engagement.
+</Tip>
+
+<Warning>
+  Avoid writing code that is environment-dependent. It leads to brittle, hard-to-test systems where logic only executes in specific environments (like production), making bugs difficult to detect. Prefer feature flags or configuration-driven behaviour instead.
+</Warning>
+
+---
+
+## Integration
+
+<Info>
+  `GovukEnvironment.current` returns `"integration"` in this environment.
+</Info>
+
+GOV.UK product teams use the integration environment for:
+
+- **manual software testing** — where automated test coverage is not yet sufficient, or the govuk-docker local environment is insufficient
+- **automated end-to-end and system tests** ([govuk-e2e-tests](https://github.com/alphagov/govuk-e2e-tests)) — which determine whether a software release is automatically promoted to the staging environment
+
+<Note>
+  The integration environment is also used by content editors at GDS and in other departments as a workaround to preview certain types of content changes. This usage should be replaced by proper preview functionality in the publisher applications.
+</Note>
+
+There are no availability guarantees for the integration environment. Support is on a best-effort basis.
+
+---
+
+## Staging
+
+<Info>
+  `GovukEnvironment.current` returns `"staging"` in this environment.
+</Info>
+
+GOV.UK Platform Engineering uses the staging environment for:
+
+- verifying changes to cluster configuration or cloud infrastructure — for example, Kubernetes cluster upgrades
+
+GOV.UK product teams occasionally use staging for:
+
+- testing major changes that need to run against a full copy of production data
+- performance testing — load testing and stress testing
+
+Staging is currently a **deployment gate**: a new release must pass in staging before it is automatically promoted to production.
+
+<Warning>
+  Staging front ends are only reachable from GDS network addresses. If you are working outside a GDS office, connect via the VPN to view the website on staging. Apps that require you to log in via GOV.UK Signon do not require the VPN.
+</Warning>
+
+---
+
+## Production
+
+<Info>
+  `GovukEnvironment.current` returns `"production"` in this environment.
+</Info>
+
+The production environment runs the versions of applications that serve content to the general public at [www.gov.uk](https://www.gov.uk).
+
+Nightly cron jobs copy data from production to staging, and from staging to integration. This:
+
+- provides automated restore testing, proving that production backups can actually be restored
+- gives developers realistic data to work with in lower environments (most GOV.UK content is public)
+
+Some data is removed or redacted before copying to staging (and therefore never reaches integration), including:
+
+- email addresses of users subscribed to topic change notifications
+- draft content that has not yet been published on the public website
+
+---
+
+## Determining the current environment in code
+
+The recommended way to determine the current environment in application code is:
+
+```ruby
+GovukEnvironment.current
+# => "production" | "staging" | "integration" | "local"
+```
+
+This method is provided by [govuk_app_config](https://github.com/alphagov/govuk_app_config) and is available by default to all GOV.UK apps.

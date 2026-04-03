@@ -1,0 +1,55 @@
+---
+title: Republishing content
+description: How and when to republish content to the Publishing API to refresh pages on GOV.UK.
+---
+
+Sometimes it is necessary to republish content to the Publishing API to refresh what appears on the website. For example, if an update is made to the [govspeak](https://github.com/alphagov/govspeak/) gem and a publishing application pre-renders that content before submitting it to Publishing API, you will need to re-render and save new HTML for that content.
+
+This process varies per application and requires [production access](/infrastructure/rules-for-getting-production-access).
+
+<Note>
+  You may wish to test the republish on integration first before carrying it out in production.
+</Note>
+
+## Whitehall
+
+If the documents are in Whitehall, you can republish content individually or in bulk via the user interface. Try to pick the task most focused to the scope of what you need to republish to avoid unnecessary load on the publishing queue.
+
+<CardGroup cols={3}>
+  <Card title="Integration" icon="flask" href="https://whitehall-admin.integration.publishing.service.gov.uk/government/admin/republishing">
+    Republish content on integration
+  </Card>
+  <Card title="Staging" icon="server" href="https://whitehall-admin.staging.publishing.service.gov.uk/government/admin/republishing">
+    Republish content on staging
+  </Card>
+  <Card title="Production" icon="globe" href="https://whitehall-admin.publishing.service.gov.uk/government/admin/republishing">
+    Republish content on production
+  </Card>
+</CardGroup>
+
+You can monitor the effect on the publishing queue via the Sidekiq Grafana dashboards for [integration](https://grafana.eks.integration.govuk.digital/d/sidekiq-queues/f0958a1?orgId=1&from=now-3h&to=now&timezone=browser&var-namespace=apps&var-app=whitehall-admin&refresh=auto), [staging](https://grafana.eks.staging.govuk.digital/d/sidekiq-queues/f0958a1?orgId=1&from=now-3h&to=now&timezone=browser&var-namespace=apps&var-app=whitehall-admin&refresh=auto), and [production](https://grafana.eks.production.govuk.digital/d/sidekiq-queues/f0958a1?orgId=1&from=now-3h&to=now&timezone=browser&var-namespace=apps&var-app=whitehall-admin&refresh=auto).
+
+## Content Publisher
+
+If the document is in Content Publisher, use the [`resync` Rake task](https://github.com/alphagov/content-publisher/blob/main/lib/tasks/resync.rake).
+
+<Tabs>
+  <Tab title="Resync a single document">
+    Pass the content ID and locale to resync one document:
+
+    ```bash
+    bundle exec rake resync:document[a-content-id:locale]
+    ```
+  </Tab>
+  <Tab title="Resync all documents">
+    To resync every document managed by Content Publisher:
+
+    ```bash
+    bundle exec rake resync:all
+    ```
+  </Tab>
+</Tabs>
+
+## Other publishing apps
+
+For publishing apps not covered above, you can republish via app-specific Rake tasks. See [If documents aren't live after publishing](/operations/documents-arent-live-after-publishing) for per-app republishing commands.

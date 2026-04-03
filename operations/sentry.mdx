@@ -1,0 +1,152 @@
+---
+title: Using Sentry for error monitoring
+description: How GOV.UK uses Sentry to collect, group, and triage application errors across all environments and applications.
+---
+
+[Sentry](https://sentry.io/govuk/) is a service that collects errors from GOV.UK applications in one place, regardless of which application, environment, or machine the error occurred on. It is far more convenient than logging on to individual machines and querying their logs.
+
+<CardGroup cols={2}>
+  <Card title="Organisation Stats" icon="chart-bar" href="https://sentry.io/organizations/govuk/stats/">
+    Overview of how many errors are being sent and rate-limited site-wide.
+  </Card>
+  <Card title="Projects" icon="folder" href="https://sentry.io/organizations/govuk/projects/">
+    Per-project view showing which applications are generating the most errors right now.
+  </Card>
+</CardGroup>
+
+## Getting access to Sentry
+
+Your tech lead should manually add you to Sentry via the Sentry UI. Access must also be recorded in [govuk-user-reviewer](https://github.com/alphagov/govuk-user-reviewer?tab=readme-ov-file#adding-users).
+
+Once you have accepted the invite, you can [sign in](https://sentry.io/auth/login/) using your GDS Google account.
+
+GOV.UK has a single `#govuk-developers` team in Sentry. Additional teams should not be created.
+
+## Nomenclature
+
+| Term | Meaning |
+|---|---|
+| **Project** | Each GOV.UK application has its own Sentry project. Errors from that application are consolidated there. |
+| **Issue** | A group of similar errors. Multiple instances of the same error type from the same app are grouped under one issue. |
+| **Error/Exception** | A single occurrence of an issue, containing the stack trace, arguments, server IP, and error message. |
+
+## How Sentry is integrated on GOV.UK
+
+Apps are configured to talk to Sentry using the [`govuk_app_config`](https://github.com/alphagov/govuk_app_config) gem, which interfaces with Sentry via its [`GovukError` class](https://github.com/alphagov/govuk_app_config/blob/master/lib/govuk_app_config/govuk_error.rb). Apps call `GovukError.configure` — see the [email-alert-api example](https://github.com/alphagov/email-alert-api/blob/main/config/initializers/govuk_error.rb).
+
+Unhandled exceptions are automatically logged to Sentry. You can also manually report errors using `GovukError.notify`, which accepts an exception object or a string.
+
+### Managing Sentry projects with Terraform
+
+Projects can be created and edited in the Sentry UI, but we configure them using Terraform to maintain consistency. [Projects are managed in govuk-infrastructure](https://github.com/alphagov/govuk-infrastructure/blob/main/terraform/deployments/sentry/locals.tf). To create a new project, edit the Terraform and run a plan and apply in Terraform Cloud.
+
+## Deciding whether to log errors in Sentry
+
+Only capture **actionable** errors — errors that represent an underlying issue that developers can fix. Do not capture 4xx responses, as these indicate a client-side issue.
+
+### Ignored exception types
+
+`govuk_app_config` maintains a list of [`excluded_exceptions`](https://github.com/alphagov/govuk_app_config/blob/b911c5bbef9bd1df6a92cf31eb5a8e0d3a91d851/lib/govuk_app_config/govuk_error/configure.rb#L20-L50). If your application raises an exception on this list, it will not be logged in Sentry.
+
+There is also a separate list of [`data_sync_excluded_exceptions`](https://github.com/alphagov/govuk_app_config/blob/b911c5bbef9bd1df6a92cf31eb5a8e0d3a91d851/lib/govuk_app_config/govuk_error/configure.rb#L57-L65) — exceptions commonly raised during the nightly data sync when databases and content store are periodically unavailable.
+
+When determining whether to ignore an exception, the full exception chain is inspected. If the underlying cause of an exception is on the ignore list, the exception will be ignored even if the exception itself is not.
+
+### Advanced customisation
+
+You can append to the `excluded_exceptions` and `data_sync_excluded_exceptions` lists in your app's `GovukError.configure` block. See the [error reporting documentation](https://github.com/alphagov/govuk_app_config/blob/master/README.md#error-reporting).
+
+You can also run arbitrary code to decide whether to log an error using the `before_send` lambda. Your custom code will be combined with the default evaluators — if any callback returns nil, the exception is excluded.
+
+## How Sentry processes errors
+
+### Fingerprinting and issue grouping
+
+When Sentry receives an error, it fingerprints it to decide which issue to group it under:
+
+1. **By stack trace** — the default grouping method
+2. **By exception type** — used when no stack trace is available
+3. **By error message** — the fallback
+
+Fingerprint rules can be applied at the project level under "Issue Grouping" in a project's settings. In practice, GOV.UK does not currently apply custom rules — investigation found that Sentry's default grouping is already very accurate.
+
+**Stack trace cleaning**: `sentry-raven` automatically normalises stack traces for fingerprinting. For example, a frame like:
+
+```text
+app/views/welcome/view_error.html.erb in _app_views_welcome_view_error_html_erb__2807287320172182514_65600 at line 1
+```
+
+...gets normalised to:
+
+```text
+app/views/welcome/view_error.html.erb at line 1
+```
+
+This ensures the same error raised twice gets grouped into the same issue.
+
+### Rate limiting
+
+GOV.UK has an account limit of 1,000 events per hour. When this limit is reached, subsequent events are discarded, meaning noisy issues can prevent other, more important issues from being logged.
+
+There is also a per-project limit of 50% (the minimum Sentry allows), meaning any single project cannot log more than 500 events per hour. This ensures that two projects would need to be producing high-volume errors simultaneously to risk breaching the account limit.
+
+## Slack alerts
+
+You can configure Sentry to notify a Slack channel when a condition is met — for example, when any issue records 100 or more errors in a 1-hour period.
+
+<Steps>
+  <Step title="Open the Alerts panel">
+    Visit the [Alerts panel](https://sentry.io/organizations/govuk/alerts/rules/).
+  </Step>
+  <Step title="Select the project">
+    Select the project the alert should apply to (for example, `app-whitehall`).
+  </Step>
+  <Step title="Create the alert rule">
+    Click "Create Alert Rule" and configure the conditions and Slack channel.
+  </Step>
+</Steps>
+
+<Note>
+  It is currently not possible to set up a global alert that applies to all projects at once. Teams are encouraged to set up alerts for projects they own. Multiple teams can set up alerts for the same project.
+</Note>
+
+## Managing issues
+
+<AccordionGroup>
+  <Accordion title="Resolving an issue">
+    When you've fixed the underlying cause, leave a comment explaining what you did, then click the **Resolve** button. Resolved issues are hidden from the default view. If the issue recurs after being resolved, it is marked as a regression and you will be notified.
+  </Accordion>
+  <Accordion title="Archiving (ignoring) an issue">
+    You can archive an issue for a set period of time (previously called "Ignore"). This is useful when you've identified a known issue and are actively working on it, to prevent Sentry from accumulating events and spamming your Slack channel.
+
+    Before archiving: leave a comment with a link to the relevant Trello card or PR, set the Assignee to yourself, then archive for an appropriate period. You can un-archive at any time.
+  </Accordion>
+  <Accordion title="Merging issues">
+    Duplicate issues can be merged from the project view by checking the boxes next to each issue and clicking **Merge**.
+
+    Do this carefully — issues cannot be unmerged, and issues that appear the same often have subtle differences (for example, the same exception type but in different transactions). Check the "Event grouping information" at the bottom of each issue page to understand why Sentry treated them as separate.
+  </Accordion>
+  <Accordion title="Deleting and discarding an issue">
+    If an issue is very high-volume and unlikely to be fixed soon, you can delete and discard it by clicking the arrow next to the trash icon and selecting "Delete and discard future events".
+
+    Use this only when the issue is significantly impacting your [Sentry quota](#rate-limiting). It is possible to undiscard an issue, but only new events after that point will be captured.
+  </Accordion>
+  <Accordion title="Commenting on an issue">
+    Click on the issue, then on the **Activity** tab to leave a comment. Comments support Markdown.
+  </Accordion>
+</AccordionGroup>
+
+## Roles and permissions
+
+| Role | Permissions |
+|---|---|
+| Member | View errors, issues, and projects |
+| Admin | Configure teams and projects |
+| Manager | Edit organisation settings, set global rate limits |
+| Owner | Unrestricted access including billing and plan changes |
+
+If you need a higher permission level, the Senior Tech team can apply it for you.
+
+## Retention
+
+Sentry retains events for [90 days](https://sentry.io/security/#data-retention).

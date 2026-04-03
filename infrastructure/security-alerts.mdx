@@ -1,0 +1,120 @@
+---
+title: Security alerts and responses
+description: How GOV.UK receives and responds to security alerts from Dependabot, CodeQL, Brakeman, and Dependency Review — including the review process, dismissal rules, and tool-specific guidance.
+---
+
+This page outlines the recommended process for handling security alerts raised by GOV.UK's static analysis tools (Brakeman, CodeQL, Dependency Review) and GitHub's native security features (Dependabot and Code Scanning).
+
+## General alert review process
+
+<Steps>
+  <Step title="Investigate the alert">
+    Determine whether the alert represents a real vulnerability in GOV.UK's usage of the affected code.
+  </Step>
+
+  <Step title="Take action or dismiss">
+    - If **action is required**: fix the issue in an appropriate timeframe based on severity.
+    - If **no action is required**: dismiss the alert with a reason and an explanatory comment.
+  </Step>
+</Steps>
+
+<Warning>
+  Do **not** create public GitHub issues for security vulnerabilities. They may expose sensitive information before a fix is in place.
+</Warning>
+
+### Dismissing alerts
+
+When dismissing an alert, choose one of the predefined reasons in GitHub. You **must** add a comment explaining your reasoning and any supporting investigation. This ensures traceability and context for future reviewers.
+
+---
+
+## Tool-specific guidance
+
+<Tabs>
+  <Tab title="Dependabot">
+    Dependabot monitors dependencies and automatically opens PRs for packages with known vulnerabilities.
+
+    **Process:**
+    - Teams should regularly review and resolve Dependabot alerts.
+    - Fixing the vulnerable dependency and merging the PR automatically closes the alert.
+
+    See the [managing dependencies with Dependabot guide](/development/manage-dependencies) for more detail.
+  </Tab>
+
+  <Tab title="Brakeman">
+    Brakeman performs static analysis on Ruby applications and raises alerts for potential security issues.
+
+    **Rules:**
+    - If you ignore a Brakeman alert in the Brakeman config, you **must** also manually dismiss the associated GitHub security alert.
+    - Always provide a note explaining why the alert is a false positive.
+
+    See the [Brakeman documentation](/development/brakeman) for more detail.
+  </Tab>
+
+  <Tab title="CodeQL">
+    CodeQL is [configured to identify vulnerabilities of high severity and precision only](https://github.com/alphagov/govuk-infrastructure/blob/f9c3b2bddf407d78c04552563a4ba23a89c8af61/.github/workflows/codeql-analysis.yml#L24-L35).
+
+    **Rules:**
+    - CodeQL does **not block builds** — it creates alerts for later review.
+    - Alerts include recommendations and references for resolving issues.
+    - You may fix or dismiss alerts, but dismissals **must** include a comment explaining why.
+
+    See the [CodeQL documentation](https://docs.publishing.service.gov.uk/manual/codeql.html) and [GitHub's code scanning alert management docs](https://docs.github.com/en/code-security/code-scanning/managing-code-scanning-alerts/managing-code-scanning-alerts-for-your-repository) for more detail.
+  </Tab>
+
+  <Tab title="Dependency Review">
+    Dependency Review checks for known vulnerabilities in pull requests. It is [configured to find critical issues](https://github.com/alphagov/govuk-infrastructure/blob/main/.github/workflows/dependency-review.yml).
+
+    **Rules:**
+    - It **blocks merges** when critical vulnerabilities are found.
+    - Resolve alerts by updating the vulnerable dependency and re-running the checks.
+
+    **Dismissing a Dependency Review alert:**
+    - Add the GitHub Advisory Database ID (GHSA) to the [`allow-ghsas` list](https://github.com/marketplace/actions/dependency-review?tab=readme-ov-file#configuration-options) in the inline configuration.
+    - Provide a clear, documented reason in a code comment.
+
+    <Warning>
+      Dismissing alerts via `allow-ghsas` should be rare and well-justified, as it affects the shared workflow used by multiple repositories.
+    </Warning>
+
+    See the Dependency Review documentation in your CI configuration for more detail.
+  </Tab>
+</Tabs>
+
+---
+
+## How alerts are configured in CI
+
+All GOV.UK applications include security analysis in their CI workflows via reusable workflows from `govuk-infrastructure`:
+
+```yaml
+jobs:
+  codeql-sast:
+    name: CodeQL SAST scan
+    uses: alphagov/govuk-infrastructure/.github/workflows/codeql-analysis.yml@main
+    permissions:
+      security-events: write
+
+  dependency-review:
+    name: Dependency Review scan
+    uses: alphagov/govuk-infrastructure/.github/workflows/dependency-review.yml@main
+
+  security-analysis:
+    name: Security Analysis (Brakeman)
+    uses: alphagov/govuk-infrastructure/.github/workflows/brakeman.yml@main
+    secrets: inherit
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+```
+
+These run on every pull request and push to `main`. Dependency Review blocks merges; CodeQL and Brakeman create alerts for review.
+
+---
+
+## Related documentation
+
+- [Brakeman guide](/development/brakeman)
+- [Managing dependencies with Dependabot](/development/manage-dependencies)
+- [Creating a new repository](/development/github-new-repo)

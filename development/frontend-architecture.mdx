@@ -1,0 +1,61 @@
+---
+title: Frontend architecture
+description: How GOV.UK frontend applications are structured, including the libraries used for public-facing and admin interfaces, and the long-term direction.
+---
+
+GOV.UK currently uses multiple systems to build frontends (HTML, CSS, JavaScript), depending on whether the application is public-facing or an admin tool.
+
+## Current state
+
+<CardGroup cols={2}>
+  <Card title="Public-facing applications" icon="globe">
+    Applications that serve pages on www.gov.uk use:
+
+    - Components and assets from [govuk_publishing_components](https://github.com/alphagov/govuk_publishing_components)
+    - The `layout_for_public` component
+  </Card>
+  <Card title="Most admin applications" icon="lock">
+    The majority of existing admin applications use:
+
+    - [govuk_admin_template](https://github.com/alphagov/govuk_admin_template), which is built by GOV.UK and uses Bootstrap
+  </Card>
+</CardGroup>
+
+<CardGroup cols={2}>
+  <Card title="New admin applications" icon="sparkles">
+    New admin applications (and some updated legacy ones) use:
+
+    - Components and assets from [govuk_publishing_components](https://github.com/alphagov/govuk_publishing_components)
+    - The `layout_for_admin` component
+  </Card>
+  <Card title="govuk_publishing_components" icon="puzzle">
+    The central gem providing both public and admin UI components. It is the preferred foundation for all new frontend work.
+  </Card>
+</CardGroup>
+
+## Long-term vision
+
+GOV.UK has two long-term goals for its frontend:
+
+1. **Use the same technology for public and admin applications** — converging on `govuk_publishing_components` as the single source of components for both.
+2. **Use as much of the [GOV.UK Design System](https://design-system.service.gov.uk/) as possible** — aligning GOV.UK's own patterns with the cross-government design system.
+
+<Info>
+  The `govuk_admin_template` library is considered legacy. New admin applications should use `govuk_publishing_components` with `layout_for_admin` rather than `govuk_admin_template`.
+</Info>
+
+## Frontend asset pipeline
+
+GOV.UK applications currently use the **Rails asset pipeline** for precompiling CSS, JavaScript, and other assets. The pipeline is configured per-app by setting an assets prefix to namespace compiled output:
+
+```ruby
+# config/initializers/assets.rb
+Rails.application.config.assets.prefix = "/assets/your-app-name"
+Rails.application.config.assets.version = "1.0"
+```
+
+Adopting a more modern build tooling approach (such as Webpack or esbuild) is a long-term aspiration, but is currently blocked by coupling in the components gem to the asset pipeline. Teams are encouraged to decouple from the asset pipeline wherever possible to make this migration easier in future.
+
+## JavaScript package management
+
+Use **Yarn** for managing JavaScript packages. Rails integrates directly with Yarn, and GOV.UK's linting toolchain assumes it. See [configure linting](/development/configure-linting) for how to set up JavaScript linting.

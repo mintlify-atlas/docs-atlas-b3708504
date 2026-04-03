@@ -1,0 +1,92 @@
+---
+title: Database management
+description: Database management on GOV.UK — RDS, Aurora, DocumentDB, OpenSearch, backups, and how to open a database command-line session.
+---
+
+GOV.UK uses multiple database technologies depending on the requirements of each application.
+
+## Database engines
+
+<CardGroup cols={2}>
+  <Card title="PostgreSQL" icon="database">
+    The primary relational database for most GOV.UK applications. Hosted in AWS RDS.
+  </Card>
+  <Card title="MySQL" icon="database">
+    Used by some applications as a relational database. Considered tech debt — the goal is to consolidate on PostgreSQL.
+  </Card>
+  <Card title="MongoDB / DocumentDB" icon="leaf">
+    Used for document databases. GOV.UK uses AWS DocumentDB (managed) and self-hosted MongoDB on EC2 for different apps. The long-term plan is to migrate all apps to DocumentDB.
+  </Card>
+  <Card title="OpenSearch (ElasticSearch)" icon="magnifying-glass">
+    Used for GOV.UK search. Hosted in [AWS OpenSearch Service](https://eu-west-1.console.aws.amazon.com/esv3/home?region=eu-west-1#opensearch/domains).
+  </Card>
+</CardGroup>
+
+<Note>
+  GOV.UK uses both PostgreSQL and MySQL for relational databases for historical reasons. This is considered [tech debt](https://trello.com/c/zlfgSJlV/69-govuk-uses-mysql-and-postgresql-and-mongo). New applications should use PostgreSQL unless there is a strong reason not to.
+</Note>
+
+## Hosting
+
+Databases are hosted separately from the application instances that use them.
+
+### PostgreSQL and MySQL (RDS)
+
+Each Postgres and MySQL database runs in its own RDS instance. Although RDS instances can host multiple databases, GOV.UK decided to grant each database its own instance in [RFC-143](https://github.com/alphagov/govuk-rfcs/blob/main/rfc-143-split-database-instances.md).
+
+### MongoDB and DocumentDB
+
+Mongo databases are hosted either in:
+
+- **DocumentDB clusters** (managed by AWS) — there is currently one DocumentDB cluster for Licensify and one shared DocumentDB cluster in production, each with three instances.
+- **MongoDB clusters** (self-hosted on EC2 instances) — one cluster of three EC2 nodes. GOV.UK has agreed to [migrate apps from MongoDB to DocumentDB](https://github.com/alphagov/govuk-aws/blob/main/architecture/decisions/0038-mongo_replacement_by_documentdb.html).
+
+### OpenSearch
+
+OpenSearch has two types of node: **master** nodes and **data (instance)** nodes. See the [Terraform configuration](https://github.com/alphagov/govuk-aws/blob/6b5f78824bb14f5f6aaa7f7d269915b7831a13c3/terraform/projects/app-elasticsearch6/main.tf#L186-L193) for the current setup.
+
+## Backups and data synchronisation
+
+Database backup and restore jobs run as Kubernetes cronjobs, configured in the [`db-backup`](https://github.com/alphagov/govuk-helm-charts/tree/main/charts/db-backup) and [`search-index-env-sync`](https://github.com/alphagov/govuk-helm-charts/tree/main/charts/search-index-env-sync) Helm charts. You can view job status in the Argo CD web UI or via `kubectl`.
+
+A nightly data sync copies production data to staging and integration. Read more about the [nightly data sync](https://docs.publishing.service.gov.uk/manual/govuk-env-sync.html).
+
+<Note>
+  GOV.UK no longer uses `db_admin` bastion hosts. The jobs that previously ran on those instances now run as Kubernetes cronjobs.
+</Note>
+
+## Opening a database command-line session
+
+### Rails app (PostgreSQL or MySQL)
+
+```bash
+kubectl exec deploy/content-publisher -it -- rails db -p
+```
+
+### Non-Rails app (PostgreSQL)
+
+```bash
+kubectl exec deploy/bouncer -it -- sh -c 'psql $DATABASE_URL'
+```
+
+### data.gov.uk CKAN PostgreSQL database
+
+```bash
+kubectl exec -n datagovuk deploy/ckan-ckan -it -- sh -c 'psql $CKAN_SQLALCHEMY_URL'
+```
+
+### MySQL (non-Rails)
+
+```bash
+kubectl exec deploy/my-app -it -- sh -c 'mysql -u $DB_USER -p$DB_PASS $DB_NAME'
+```
+
+See the [guide to querying a MySQL database on EKS](https://docs.publishing.service.gov.uk/manual/how-to-query-mysql-database-on-eks.html) for more detail.
+
+## Rotating RDS credentials
+
+See the [rotating RDS credentials guide](https://docs.publishing.service.gov.uk/manual/rotating-rds.credentials.html) for steps to rotate database passwords. Credentials are stored in AWS Secrets Manager and accessed by applications via the External Secrets Operator.
+
+## Backup and restore
+
+See the [backup and restore in AWS RDS guide](https://docs.publishing.service.gov.uk/manual/howto-backup-and-restore-in-aws-rds.html) for steps to take snapshots and restore databases.

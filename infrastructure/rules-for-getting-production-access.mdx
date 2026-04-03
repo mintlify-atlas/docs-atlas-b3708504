@@ -1,0 +1,118 @@
+---
+title: Rules for getting production access
+description: The process for getting production deploy and admin access on GOV.UK — who can get it, the learning requirements, how to request it, and when access is revoked.
+---
+
+GOV.UK restricts access to production systems for new or returning developers, SREs, and technical architects. This gives people time to build knowledge of how to interact with production systems safely.
+
+<Note>
+  Access restrictions defend against accidental mistakes. Separate processes address malicious activity, including security clearance, probation periods, and auditable systems.
+</Note>
+
+## Types of production access
+
+There are three levels of production access:
+
+<CardGroup cols={3}>
+  <Card title="Production Deploy" icon="rocket">
+    Deploy code and merge PRs in continuously deployed apps. No ability to administer production systems.
+  </Card>
+  <Card title="Production Admin" icon="shield">
+    Write access to Argo CD, privileged AWS access, and admin access to Signon and Fastly.
+  </Card>
+  <Card title="Platform Engineer" icon="wrench">
+    Everything in Production Admin, plus special `-platformengineer` IAM roles with Cluster Admin access to EKS clusters.
+  </Card>
+</CardGroup>
+
+A [spreadsheet documenting the full list of permissions](https://docs.google.com/spreadsheets/d/1oqy7tKpB8mHBhHQ9jAZu0NR0GKKZXOqtQGBKHYVnpmk/edit?usp=sharing) for all access levels is available.
+
+---
+
+## Production Deploy access
+
+This level allows engineers to deploy code but not administer production-facing admin systems.
+
+### What it grants
+
+- Permission to [deploy apps](/development/deployments) via the [GOV.UK Production Deploy GitHub team](https://github.com/orgs/alphagov/teams/gov-uk-production-deploy)
+- Permission to merge pull requests in continuously deployed applications
+- Read-only access to logging systems (Logit, etc.)
+- Read-only access to dashboards in staging and production (including Argo CD web UI)
+- AWS `developer` access in the staging environment — read-only to most services plus additional access to Athena, EKS, and other low-risk components
+- Kubectl access via Kubernetes RBAC to most resources and actions in EKS
+- "Normal" role in GOV.UK Signon on staging and production
+
+### Who can get it
+
+Access can be granted to both civil servants and contractors at the discretion of a **sponsor** — either the engineer's civil servant tech lead or a [GOV.UK Senior Tech member](/getting-started/ask-for-help).
+
+Before approving access, the sponsor must confirm the engineer:
+
+- has the required level of security clearance (BPSS)
+- is aware of GOV.UK processes and standards around [code review](https://gds-way.digital.cabinet-office.gov.uk/manuals/code-review-guidelines.html)
+- understands the responsibilities that releasing code brings
+- knows [how to roll back to an older release](/infrastructure/kubernetes-manage-app#roll-back-your-app) if there are issues
+- knows [how to get help](/getting-started/ask-for-help) from someone with more access
+
+To grant access, the sponsor should follow the steps in the [GOV.UK Production Deploy access template Trello card](https://trello.com/c/S9sex2XU/1391-govuk-production-deploy-access-for-name).
+
+<Note>
+  Technologist apprentices are limited to Production Deploy access. However, if they are confident and want to take on an in-hours technical on-call shift as a Secondary, they may follow the Production Admin access steps at their line manager's discretion.
+</Note>
+
+---
+
+## Production Admin access
+
+### What it grants
+
+- Write access to Argo CD in staging and production via the [GOV.UK Production Admin GitHub team](https://github.com/orgs/alphagov/teams/gov-uk-production-admin)
+- Privileged AWS access in production and staging environments (via the `production_admin_access` role in [`govuk-user-reviewer`](https://github.com/alphagov/govuk-user-reviewer/blob/main/config/govuk_tech.yml))
+- [Google Cloud Platform (GCP)](https://docs.publishing.service.gov.uk/manual/google-cloud-platform-gcp.html) access to manage static mirrors and DNS
+- Signon "Super Admin" access in production
+- `engineer` and "Access all services" permissions in Fastly
+- [Sentry](https://sentry.io/settings/govuk/members/) "Admin" role
+
+### Who can get it
+
+You must meet **all** of the following requirements:
+
+- Minimum BPSS security clearance (blue building pass)
+- Passed your probation period
+- Completed the [Production Admin Preparedness checklist](https://docs.google.com/forms/d/e/1FAIpQLSeY5H8ei89AJFaQLuDrd6CpWjCighCvF3d2iXx7QsyJdQjL-Q/viewform) and had your response reviewed by [someone in Senior Tech](/getting-started/ask-for-help)
+
+To grant access, a senior tech person should follow the steps in the [GOV.UK Production Admin access template card](https://trello.com/c/GIHPZi2o).
+
+### Production Admin learning objectives
+
+<AccordionGroup>
+  <Accordion title="GOV.UK technical stack">
+    Understanding of the different parts of the GOV.UK technical stack — CDN, frontends, publishing apps, etc. For example, by attending an "Introduction to GOV.UK Technical Architecture" session or watching the recording.
+  </Accordion>
+  <Accordion title="Deployment pipeline">
+    Understanding of how code gets from your machine to running on production. Read [the deployment docs](/development/deployments) and learn on the job.
+  </Accordion>
+  <Accordion title="Incident management">
+    Familiarity with the incident management process. Read the [So, you're having an incident](/operations/incident-what-to-do) doc and complete the [incident preparedness quizzes](https://drive.google.com/drive/folders/1X9eGQMIl9ifb3X2jYcdjqrt01P9JYJzR).
+  </Accordion>
+  <Accordion title="Credentials and least privilege">
+    Best practices around the principle of least privilege, safely debugging production issues, and working with credentials and accounts. For example, by pairing with another developer to practise a drill on your product team.
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Platform Engineer access
+
+Platform Engineer access provides everything in Production Admin, plus:
+
+- Special `-platformengineer` IAM roles for each environment that provide similar access to the `-developer` roles but **also grants Cluster Admin access to EKS clusters** — allowing Platform Engineers to access and manage all namespaces and resources
+
+This is necessary because without this role, the only way to obtain Cluster Admin access would be to assume the `fulladmin` role, which GOV.UK discourages except for "break glass" scenarios that may trigger alerting.
+
+---
+
+## Temporary access revocation
+
+If you are absent for more than 6 weeks, your production access should be revoked.

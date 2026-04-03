@@ -1,0 +1,67 @@
+---
+title: Security scanning with Brakeman
+description: How GOV.UK uses Brakeman to perform static security analysis on Ruby on Rails applications, including how to add it to a project and handle alerts.
+---
+
+[Brakeman](https://github.com/presidentbeef/brakeman) is a static analysis tool that checks Rails applications for security vulnerabilities. It works like a security-focused linter — scanning source code without running the application. Brakeman is configured as a reusable GitHub Actions workflow and should be included in the CI pipeline of all GOV.UK Ruby repositories.
+
+## Add Brakeman to a project
+
+Add the following job to the `jobs` section of your CI workflow (e.g. `.github/workflows/ci.yml`):
+
+```yaml
+security-analysis:
+  name: Security Analysis
+  uses: alphagov/govuk-infrastructure/.github/workflows/brakeman.yml@main
+  permissions:
+    contents: read
+    security-events: write
+    actions: read
+```
+
+This references the [reusable Brakeman workflow](https://github.com/alphagov/govuk-infrastructure/blob/main/.github/workflows/brakeman.yml) maintained centrally in `govuk-infrastructure`.
+
+## Finding security alerts
+
+<CardGroup cols={2}>
+  <Card title="Repository-level alerts" icon="shield">
+    Go to the **Security** tab of the repository and select **Code Scanning** under **Vulnerability Alerts**. All historical and current alerts appear here.
+  </Card>
+  <Card title="Pull request alerts" icon="git-pull-request">
+    When a PR is created, Brakeman scans the diff for new vulnerabilities. Alerts appear on the **Checks** tab of the PR under **Code scanning results → Brakeman**.
+  </Card>
+</CardGroup>
+
+## Dealing with false positives
+
+Brakeman may flag code that is not actually a vulnerability. When this happens:
+
+<Steps>
+  <Step title="Try to refactor the code">
+    Attempt to rewrite the code in a way that satisfies Brakeman **and** would pass a code review. There is no benefit in refactoring purely for Brakeman if the result is harder to understand.
+
+    See this [Content Store example](https://github.com/alphagov/content-store/pull/459) of code refactored to satisfy Brakeman — the resulting code is slightly less elegant but remains suitable.
+  </Step>
+
+  <Step title="Ignore the warning only as a last resort">
+    Only ignore a warning when it is not possible to refactor in a way that is both elegant and satisfies Brakeman. Use Brakeman's interactive ignore tool:
+
+    ```bash
+    brakeman -I
+    ```
+
+    This walks you through each warning and helps you decide what to do with it.
+  </Step>
+
+  <Step title="Document why the warning is a false positive">
+    If you choose to ignore a warning, you **must** include a note explaining why it is a false positive and not a real security vulnerability. This is required so that future reviewers understand the decision.
+  </Step>
+</Steps>
+
+<Warning>
+  Do not ignore Brakeman warnings without a documented justification. Unexplained suppressions make it harder to audit the security posture of the application.
+</Warning>
+
+## Dealing with genuine security alerts
+
+See the [security alerts guidance](/infrastructure/security-alerts) for how to respond when Brakeman surfaces a real vulnerability.

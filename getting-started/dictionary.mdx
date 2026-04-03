@@ -1,0 +1,146 @@
+---
+title: GOV.UK developer dictionary
+description: Definitions of key GOV.UK concepts and publishing platform terminology.
+---
+
+This dictionary defines the concepts and terms you will encounter when working on GOV.UK. Some terms are user-facing (used by content editors), while others are implementation details specific to the publishing platform.
+
+<Info>
+  The source for this dictionary is maintained in [data/dictionary.yml](https://github.com/alphagov/govuk-developer-docs/blob/main/data/dictionary.yml) in the govuk-developer-docs repository.
+</Info>
+
+## Terms
+
+<AccordionGroup>
+  <Accordion title="Base path">
+    A reserved URL on `www.gov.uk` that is associated with a content item.
+
+    **Also known as:** slug, location
+
+    For example, `/guidance/how-to-apply-for-a-passport` is the base path for a particular piece of guidance. No two content items can share the same base path at the same time.
+  </Accordion>
+
+  <Accordion title="Content">
+    The data — generally words — that an editor has written and wants to eventually publish for users.
+
+    Content flows through the publishing platform from a publishing application, through Publishing API, to the Content Store, where it is served to frontend applications and rendered to users.
+  </Accordion>
+
+  <Accordion title="Content ID">
+    A unique identifier shared by content items that represent the same content. A content ID may have content items in different states (draft, live), locations and translations.
+
+    **Also known as:** artefact, document
+
+    For example, a guide about passports will have a single content ID, regardless of how many times it has been edited, what URL it is at, or how many translations exist.
+  </Accordion>
+
+  <Accordion title="Content item">
+    The representation of an edition of a document, with links, to be stored in the Content Store.
+
+    The Content Store holds only the **latest** content item for each base path. Older editions are retained in Publishing API.
+  </Accordion>
+
+  <Accordion title="Dependency resolution">
+    The process of recursively following dependencies (links) between documents to work out which expanded links need updating.
+
+    When a content item changes — for example, its title is updated — dependency resolution identifies all other content items that reference it (via links) and queues them for re-processing. A single change can trigger updates across thousands of content items.
+
+    See the [dependency resolution documentation](https://github.com/alphagov/publishing-api/blob/main/docs/dependency-resolution.md) in Publishing API.
+  </Accordion>
+
+  <Accordion title="Details">
+    The part of a content item schema that captures content-specific data in a way that is opaque to the publishing platform, but understandable by the rendering application.
+
+    **Also known as:** details hash
+
+    For example, the `details` field of a `guide` schema might contain the guide's parts and their body text.
+  </Accordion>
+
+  <Accordion title="Document">
+    A collection of editions, used to refer to all iterations of a single piece of content in a certain translation.
+
+    A document has a stable content ID across all its editions.
+  </Accordion>
+
+  <Accordion title="Document type">
+    A way to classify content items in publishing applications. Sometimes displayed to the end user.
+
+    **Also known as:** format, content type
+
+    Examples include `news_article`, `guide`, `travel_advice`, `consultation` and `statistical_data_set`. Document types map to schemas which define the structure of those content items.
+  </Accordion>
+
+  <Accordion title="Edition">
+    A version of a document, or a representation of some entity required to render GOV.UK.
+
+    **Also known as:** a version
+
+    Publishing API stores every edition of every document. The Content Store stores only the most recent published edition.
+  </Accordion>
+
+  <Accordion title="Expanded links">
+    Allows rendering applications to see the titles and descriptions of linked documents, and to follow links recursively, without needing to make multiple Content Store requests.
+
+    Link expansion happens in Publishing API at the point of sending an edition downstream to the Content Store. For example, when a news article is published, its `expanded_links` will include the full details of its related organisations and topics, not just their content IDs.
+  </Accordion>
+
+  <Accordion title="Links">
+    The part of a content item schema that captures other content that has been tagged to the content.
+
+    **Also known as:** links hash
+
+    Examples include `organisations`, `taxons`, `parent` and `related_items`. These are stored as arrays of content IDs in the Publishing API database, and expanded to full content item details via link expansion before being sent to Content Store.
+  </Accordion>
+
+  <Accordion title="Publishing">
+    Putting content live on GOV.UK — making it publicly visible at its base path.
+
+    Publishing is an explicit action a publisher takes in a publishing application. Until a document is published, it only exists in the draft Content Store and is not visible to the public.
+  </Accordion>
+
+  <Accordion title="Publishing application">
+    The application used to publish a given piece of content to GOV.UK.
+
+    **Also known as:** backend application
+
+    Examples include Whitehall, Publisher and Specialist Publisher. Each document in Publishing API is associated with the publishing application that originally created it.
+  </Accordion>
+
+  <Accordion title="Rendering application">
+    The application used to render a given piece of content to GOV.UK users.
+
+    **Also known as:** frontend application
+
+    Examples include `frontend`, `finder-frontend` and `collections`. The rendering application is stored on the content item in Content Store as `rendering_app`, and Router uses this to determine where to forward incoming requests.
+  </Accordion>
+
+  <Accordion title="Route">
+    A record that describes how Router should hand control of rendering over to a rendering application based on a URL.
+
+    Routes have different handlers: `backend` (forward to a rendering app), `redirect` (return a 301) and `gone` (return a 410). Routes are stored in a MongoDB database and loaded into Router's in-memory prefix trie.
+  </Accordion>
+
+  <Accordion title="Schema">
+    A JSON schema representation of a kind of document. Usually maps one-to-one with a document type.
+
+    Schemas are defined in [Publishing API's content_schemas directory](https://github.com/alphagov/publishing-api/tree/main/content_schemas) and validated against every edition sent to Publishing API. They define which fields are required, what types they must be, and which values are permitted.
+  </Accordion>
+
+  <Accordion title="Tagging">
+    Lets editors capture how a piece of content relates to another piece of content.
+
+    Tagging typically refers to associating content with topics in the GOV.UK taxonomy (stored as `links.taxons`). Content can also be tagged to organisations, policy areas and other collections. Some publishing apps have their own tagging interfaces; you can also tag content independently using [content-tagger](https://github.com/alphagov/content-tagger).
+  </Accordion>
+
+  <Accordion title="Unpublishing">
+    Taking content off the live site, because it was published in error or is being redirected to a better version of the content.
+
+    Unpublishing a document removes it from the live Content Store. Depending on the type of unpublishing, a `gone` route (410) or `redirect` route (301) is created in Router.
+  </Accordion>
+
+  <Accordion title="Withdrawing">
+    Putting a notice on a page to indicate that it is no longer current or accurate, without removing it from the site.
+
+    A withdrawn page remains accessible at its URL but displays a prominent notice at the top explaining that the content may be out of date.
+  </Accordion>
+</AccordionGroup>

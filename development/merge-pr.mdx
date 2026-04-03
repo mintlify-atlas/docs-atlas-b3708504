@@ -1,0 +1,87 @@
+---
+title: Merging pull requests
+description: The rules and process for reviewing and merging pull requests on GOV.UK, including scenarios for different change types.
+---
+
+There are five rules for reviewing and merging PRs that apply to all GOV.UK applications:
+
+1. The `main` branch must be releasable at any time.
+2. The change must have two reviews from GDS (preferably GOV.UK). This can and normally will include the author.
+3. If a branch is force-pushed or rebased after a review, the author must dismiss the stale review and request a new one — unless the change is a trivial rebase with no side effects.
+4. Use the GitHub review UI to mark a PR as approved or requesting changes.
+5. Use the GitHub UI to merge the PR. This ensures the PR number is added to the merge commit.
+
+<Warning>
+  Some apps use continuous deployment, meaning merging to `main` auto-deploys to production. These repos restrict merging to [those with Production access](https://github.com/search?q=repo%3Aalphagov%2Fgovuk-infrastructure+need_production_access_to_merge&type=code). A warning triangle emoji in the PR template indicates an app is continuously deployed.
+</Warning>
+
+For apps that are not continuously deployed, deploy your changes all the way to production as soon as possible after merging.
+
+## Scenarios
+
+<AccordionGroup>
+  <Accordion title="A simple change">
+    A small PR for a well-understood application with a well-defined scope. Someone with similar understanding can approve and merge. Both parties should be confident that `main` will be deployable after the merge.
+  </Accordion>
+
+  <Accordion title="A simple change with a long-running test suite">
+    If you've approved a change and are confident the suite will pass, you can approve the PR. The author then has permission to merge once CI passes — they don't need to wait for explicit re-approval.
+  </Accordion>
+
+  <Accordion title="A simple change needing a small rebase">
+    If a conflict arises (e.g. a Gemfile change conflicts with another merged change), the author can keep existing approvals, rebase the branch to resolve the conflict, and merge.
+  </Accordion>
+
+  <Accordion title="A simple change needing a large rebase">
+    If conflicts arise from significant refactoring in another merged branch, the author must rebase, dismiss existing stale approvals, and request a new review.
+  </Accordion>
+
+  <Accordion title="A reviewer without full context">
+    Some changes require specialised knowledge. A reviewer with partial context can leave a comment such as "Looks good to me, but I'd appreciate an additional review from someone with more frontend knowledge." Mention someone better placed to complete the review. This counts as a half-review; a second reviewer with the remaining knowledge can then merge.
+  </Accordion>
+
+  <Accordion title="A change with timing or dependency implications">
+    Prefix the PR title with `[Do not merge]` and explain the dependency in the PR description. Reviewers can approve. It's then the author's responsibility to merge when the conditions are met.
+  </Accordion>
+
+  <Accordion title="A change from a non-developer">
+    Repositories like [smart-answers](https://github.com/alphagov/smart-answers) regularly receive PRs from content designers changing text content. These should be welcomed. Do not expect the same commit structure standards as from developers — changes via the GitHub UI typically produce many small commits.
+
+    If the commit structure would be hard to unpick later, consider using "Squash and merge" on GitHub (you'll set one commit message before merging), or rebase for more control.
+  </Accordion>
+
+  <Accordion title="A change from an external contributor">
+    PRs from forks outside GDS require extra caution. Two GDS people must review, focusing on anything potentially malicious or damaging to infrastructure. The first reviewer approves; the second reviewer merges. Thank the contributor appropriately.
+  </Accordion>
+
+  <Accordion title="Two developers working on the same branch">
+    If two developers contributed commits independently, they can approve each other's work. If they paired on the work, the pair counts as a single contributor, so a separate third reviewer is needed.
+  </Accordion>
+</AccordionGroup>
+
+## Dependabot PRs
+
+When reviewing Dependabot PRs:
+
+1. Expand the **Release notes** or **Changelog** section and read it for breaking changes or upgrade instructions.
+2. Take extra care with major version upgrades (e.g. `2.1.0` → `3.0.0`).
+
+For unfamiliar or long-dormant dependencies, apply additional due diligence:
+
+- Expand **Commits** and click the "compare view" link
+- Verify the version bump in the repo matches the PR
+- Review the code for anything suspicious: use of `eval`, encoded strings, HTTP requests to non-GOV.UK domains
+- Verify the package on [Rubygems](https://rubygems.org/) or the relevant registry — confirm the source link points to the repo you reviewed and the version exists
+- Verify the author of the version bump commit is a regular contributor
+
+If you decide a version is inappropriate, you can tell Dependabot with a comment: `@dependabot ignore this major version`. If you do this, add the PR to the [tech debt Trello board](https://trello.com/b/oPnw6v3r).
+
+<Note>
+  Traditional manual review may not provide significant security benefits against supply chain attacks. Comprehensive test coverage and security scanning are the primary safeguards. See [RFC-167](https://github.com/alphagov/govuk-rfcs/blob/main/rfc-167-auto-patch-dependencies.md) for the rationale.
+</Note>
+
+## Other considerations
+
+- When opening a PR, if you want a specific reviewer, say so in the PR description (e.g. "Please could someone from Platform Engineering review the Helm template changes?").
+- It's acceptable for someone other than the author to merge a PR, particularly if the author is unavailable. That person should be confident the change has no unresolved dependencies and won't break `main`.
+- It's sometimes acceptable to merge when test suites are failing. This requires a repository administrator or account owner. Contact one if you need a force merge (useful in catch-22 situations where two interdependent repos both have failing suites).

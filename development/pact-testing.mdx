@@ -1,0 +1,129 @@
+---
+title: Contract (Pact) testing
+description: How GOV.UK uses Pact for contract testing between API providers and consumers, including how to run tests locally, add tests for new apps, and change existing tests.
+---
+
+[Pact](https://docs.pact.io/) is the tool GOV.UK uses for contract testing. Contract testing involves creating a shared set of tests between an API (the "provider") and its users ("consumers").
+
+A consumer defines a **contract** specifying what response (status code and body) it expects from a provider for a given HTTP request. If the provider changes its API in a way that breaks the contract, the tests fail — preventing silent breaking changes.
+
+## How it works
+
+Since tests should not spin up both apps simultaneously, Pact provides a **broker** which manages the interactions between the two apps in test. The flow is:
+
+<Steps>
+  <Step title="Consumer defines the expected interactions">
+    The consumer writes tests defining what requests it makes and what responses it expects. For example, the Places Manager API contract is defined in [places_manager_api_pact_test.rb in GDS API Adapters](https://github.com/alphagov/gds-api-adapters/blob/main/test/pacts/places_manager_api_pact_test.rb).
+  </Step>
+
+  <Step title="Consumer tests generate a pactfile">
+    Running the consumer tests outputs a JSON pactfile which is published to the [GOV.UK pact broker](https://govuk-pact-broker-6991351eca05.herokuapp.com/).
+  </Step>
+
+  <Step title="Provider verifies against the pactfile">
+    The provider's build sets up a test environment and uses the published pactfile to test the real API — confirming the provider fulfils the contract.
+  </Step>
+</Steps>
+
+<Info>
+  **GDS API Adapters as consumer proxy.** Many API calls in GOV.UK are made via `gds-api-adapters`, so GDS API Adapters is treated as the consumer for most pact tests. This avoids duplicating consumer tests across multiple apps that all call the same API. GDS API Adapters also provides [shared stubs](https://github.com/alphagov/gds-api-adapters/tree/master/lib/gds_api/test_helpers) for use in each app's own tests.
+
+  When an application calls an API **directly** (not via GDS API Adapters), that application is the consumer. For example, Publishing API is the consumer in its pact with Content Store.
+</Info>
+
+## Running Pact tests locally
+
+<Tabs>
+  <Tab title="Consumer (GDS API Adapters)">
+    Run Pact tests as part of the regular test suite:
+
+    ```bash
+    bundle exec rake test
+    ```
+
+    Or run Pact tests on their own:
+
+    ```bash
+    bundle exec rake pact_test
+    ```
+  </Tab>
+  <Tab title="Provider">
+    For a provider app (e.g. Frontend, which provides `/bank-holidays.json`):
+
+    ```bash
+    bundle exec rake pact:verify
+    ```
+
+    Test against a specific branch of GDS API Adapters:
+
+    ```bash
+    env PACT_CONSUMER_VERSION=branch-<branch-of-gds-api-adapters> bundle exec rake pact:verify
+    ```
+
+    When a GDS API Adapters build runs, the generated JSON pact is pushed to the broker as `branch-<branch-name>`. This is why `PACT_CONSUMER_VERSION` must start with `branch-`.
+
+    Test against local changes to GDS API Adapters:
+
+    ```bash
+    env PACT_URI="../gds-api-adapters/spec/pacts/gds_api_adapters-bank_holidays_api.json" bundle exec rake pact:verify
+    ```
+  </Tab>
+</Tabs>
+
+## Adding Pact tests for a new app
+
+<Steps>
+  <Step title="Write consumer and provider tests">
+    Write the consumer tests (example: [Consumer PR](https://github.com/alphagov/gds-api-adapters/pull/1066)) and provider tests (example: [Provider PR](https://github.com/alphagov/places-manager/pull/644)).
+
+    Note: Pact tests are now stored in the `test/pacts` directory of GDS API Adapters.
+  </Step>
+
+  <Step title="Verify tests pass locally for both sides">
+    CI cannot yet test these because the pactfile has not been published to the broker. Confirm everything works locally before proceeding.
+  </Step>
+
+  <Step title="Merge the consumer tests">
+    Merging the consumer branch publishes the pact tests to the pact broker.
+  </Step>
+
+  <Step title="Add a GitHub Action to the provider to verify the pact">
+    Add a `pact-verify.yml` GitHub Actions workflow to the provider app. [See an example](https://github.com/alphagov/asset-manager/blob/7311e5dae03496bde88b4eebf7104ea162603681/.github/workflows/pact-verify.yml). This confirms the provider fulfils the published contract.
+  </Step>
+
+  <Step title="Update the consumer to trigger the provider action">
+    Update the consumer's CI workflow to call the provider's GitHub Action as part of its build. [See an example](https://github.com/alphagov/gds-api-adapters/blob/bcc8e58eccf69dd37657d13156cbe11c07535844/.github/workflows/ci.yml#L101-L117). This verifies the provider contract whenever the consumer changes.
+  </Step>
+</Steps>
+
+## Changing existing Pact tests
+
+When you need to change both the provider API and the consumer contract at the same time, follow these steps in order:
+
+<Steps>
+  <Step title="Change the provider API in a branch">
+    Make the API change in a branch of the provider app (e.g. Places Manager). The build will fail at the Pact test stage because it tests against the default branch of the consumer, which still has the old contract.
+  </Step>
+
+  <Step title="Update the pactfile in the consumer in a branch">
+    Update the consumer pact definition to match the new API. The consumer build will also fail because it tests against the default branch of the provider, which does not yet have the change.
+  </Step>
+
+  <Step title="Confirm locally that the provider verifies against the new consumer pact">
+    ```bash
+    env PACT_CONSUMER_VERSION=branch-<branch-of-gds-api-adapters> bundle exec rake pact:verify
+    ```
+  </Step>
+
+  <Step title="Merge the provider change">
+    Failing Pact tests are configured not to block merging, so you can merge even with a red build at this stage.
+  </Step>
+
+  <Step title="Re-run the consumer tests">
+    The consumer tests should now pass because the provider has been updated.
+  </Step>
+
+  <Step title="Merge the consumer change">
+    With both sides merged, the contract is fully updated.
+  </Step>
+</Steps>

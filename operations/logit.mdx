@@ -1,0 +1,165 @@
+---
+title: Viewing logs in Logit
+description: How to access GOV.UK application and Kubernetes logs in Logit.io using Kibana, and how to troubleshoot common Logit issues.
+---
+
+GOV.UK sends application logs and origin HTTP request logs to [Logit.io](https://logit.io/), a software-as-a-service log storage and retrieval system based on the Elasticsearch, Logstash, Kibana (ELK) stack.
+
+GOV.UK also sends Kubernetes Events to Logit. These are stored in a separate set of indexes that all begin with the prefix `kubernetes-events-`. An index pattern is already created in Kibana in every environment to query these indexes.
+
+<Note>
+  Fastly CDN logs are **not** stored in Logit. See [Query CDN logs](https://docs.publishing.service.gov.uk/manual/query-cdn-logs.html) for that.
+</Note>
+
+## Access Logit
+
+<Tabs>
+  <Tab title="Via Google Workspace SSO (recommended)">
+    Log into Logit directly via [Google Workspace single sign-on](https://accounts.google.com/o/saml2/initsso?idpid=C01ppujwc&spid=408557323201&forceauthn=false).
+
+    You can also open Logit from the Google Workspace apps menu in Gmail, Calendar, or Drive: click the 3×3-grid-of-dots icon next to the GDS logo in the top-right corner, scroll to the bottom of the app list, then choose Logit.
+  </Tab>
+  <Tab title="Via dashboard.logit.io">
+    <Steps>
+      <Step title="Go to the Logit sign-in page">
+        Go to [https://dashboard.logit.io/sign-in](https://dashboard.logit.io/sign-in).
+      </Step>
+      <Step title="Enter your GDS email address">
+        Enter your `<username>@digital.cabinet-office.gov.uk` email address. The password box should disappear.
+      </Step>
+      <Step title="Press Return and choose your account">
+        If you are signed into multiple Google accounts, choose your `digital.cabinet-office.gov.uk` account.
+      </Step>
+      <Step title="Allow access if prompted">
+        If accessing Logit for the first time, allow Logit to connect with your Google Workspace account if prompted.
+      </Step>
+    </Steps>
+  </Tab>
+</Tabs>
+
+<Warning>
+  If you chose "Sign in with Google" (or any other "Sign in with" link) on the Logit sign-in page, you may be logged in but with no stacks visible. Sign out using the link at the bottom-left corner of the page and use the method above instead.
+</Warning>
+
+### Launch Kibana
+
+Once logged in, you will see the Logit Dashboard page. Choose **Launch Kibana** for the appropriate stack.
+
+Each environment has its own ELK stack in Logit:
+
+| Environment | Stack name |
+|---|---|
+| Production | `GOV.UK production EKS` |
+| Staging | `GOV.UK staging EKS` |
+| Integration | `GOV.UK integration EKS` |
+
+### If you don't have access
+
+Your tech lead should have already set up your logs access when you joined your team. If you are unable to view logs in Logit, get in touch with your tech lead or a member of GOV.UK Senior Tech.
+
+## Retention periods
+
+| Environment | Retention |
+|---|---|
+| Production | 90 days |
+| Staging | 7 days |
+| Integration | 7 days |
+
+The retention window for each environment is configurable under the Settings page for the corresponding Logit stack, for users with the Stack Editor permission.
+
+## Querying logs
+
+See [Using Kibana](/operations/kibana) for useful queries and guidance on the Kibana UI.
+
+## Troubleshooting
+
+### If Logit is down
+
+<Steps>
+  <Step title="Check the Logit status page">
+    Check [status.logit.io](https://status.logit.io/) to see if there is a known issue.
+  </Step>
+  <Step title="Check Google Workspace SSO">
+    Check that you can sign into other third-party services via Google Workspace SSO (for example, Terraform Cloud). If not, the problem is likely with your account or GDS's Google Workspace setup. Contact the [IT helpdesk](https://gds.slack.com/channels/ask-it) if you suspect this.
+  </Step>
+  <Step title="Try from a different network">
+    Try from a different network (for example, by tethering your work mobile or disconnecting from the office VPN) to rule out a local network issue.
+  </Step>
+  <Step title="Confirm it's down for others">
+    Ask someone else to check whether Logit is down for them too, in case the problem is specific to your user account. Your tech lead (during office hours) or secondary on-call (if you're on call) can help.
+  </Step>
+  <Step title="Contact Logit support">
+    If you are sure there is a Logit outage, contact [Logit telephone support](https://docs.google.com/document/d/1TFsMkCafynS6e4S0PL6qN8Ml7JgorbAG8AWoHGelaGk/view) (access restricted to GDS):
+
+    - You will be prompted to enter the PIN and leave a voicemail
+    - Mention your name, that you're calling from GDS, a brief description of the problem, and a contact number
+    - Logit will call you back within half an hour
+  </Step>
+</Steps>
+
+### If new logs stop appearing
+
+Logs should normally become available to query in Kibana within a minute or two of being written.
+
+<Steps>
+  <Step title="Find when logs stopped">
+    Run an empty query in Kibana Explore with the time range set to "last 7 days" and check the bar graph of message count per time window to identify when the gap started.
+  </Step>
+  <Step title="Check the Filebeat DaemonSet">
+    On the source Kubernetes cluster, check whether the Filebeat DaemonSet is healthy and look for errors in its logs:
+
+    ```sh
+    k -n cluster-services describe ds/filebeat-filebeat
+    ```
+
+    ```sh
+    k -n cluster-services logs ds/filebeat-filebeat
+    ```
+
+    Contact the [Platform Engineering team](https://gds.slack.com/channels/govuk-ask-platform-engineering) if you need help with this.
+  </Step>
+  <Step title="Check for Logstash ingestion errors">
+    In the Logit dashboard, choose **Settings** for the affected stack, then choose **Diagnostic Logs** from the left-hand menu.
+  </Step>
+  <Step title="Restart Logstash if needed">
+    If there seems to be no recent data in Kibana when there really should be, restart the Logstash instance:
+
+    1. From the Logit dashboard, choose **Settings** for the affected stack
+    2. Select **Logstash Filters** in the left-hand menu
+    3. Under **Danger Zone**, press **Restart Logstash**
+  </Step>
+</Steps>
+
+## Administration
+
+### Grant logs access to a new user
+
+<Steps>
+  <Step title="Ask the user to attempt login first">
+    The user must first attempt to log in through SSO on Logit. Their account will not appear in the admin UI until they have done this.
+  </Step>
+  <Step title="Open Team Settings">
+    Go to the main Dashboard, click **Manage Teams**, then **Team Settings**, and click the appropriate team.
+  </Step>
+  <Step title="Assign Member access">
+    Scroll down to the list of users, find the user, and give them **Member** access. Click **Apply Changes**.
+  </Step>
+</Steps>
+
+### Update Logstash configuration
+
+<Steps>
+  <Step title="Open the stack settings">
+    Click the **Settings** button next to the stack you want to configure.
+  </Step>
+  <Step title="Go to Logstash Filters">
+    Navigate to **Logstash Filters**.
+  </Step>
+  <Step title="Edit, validate and apply">
+    Amend the configuration, click **Validate**, and if it validates correctly, click **Apply**.
+  </Step>
+</Steps>
+
+<Note>
+  GOV.UK's Logstash configuration is stored in the [govuk-infrastructure](https://github.com/alphagov/govuk-infrastructure/tree/main/docs/logit) repository. Any changes should be committed there and kept consistent across stacks.
+</Note>

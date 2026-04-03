@@ -1,0 +1,80 @@
+---
+title: Learn how GOV.UK works
+description: A starter guide to the GOV.UK technology stack, publishing system and how to deepen your knowledge of the platform.
+---
+
+Welcome to GOV.UK. The GOV.UK publishing system is quite complex, and getting to know the platform can be a daunting task. This page is a starter guide to help you learn how GOV.UK works.
+
+## The technology stack
+
+GOV.UK consists of many separate applications. Most are built using [Ruby on Rails](https://rubyonrails.org/), hosted on Kubernetes, configured using [govuk-helm-charts](https://github.com/alphagov/govuk-helm-charts) and deployed using [ArgoCD](https://argo-cd.readthedocs.io/en/stable/).
+
+Applications can be grouped into three broad categories:
+
+<CardGroup cols={3}>
+  <Card title="Frontend apps" icon="globe">
+    Render content to users visiting www.gov.uk. Examples include [frontend](https://github.com/alphagov/frontend), [finder-frontend](https://github.com/alphagov/finder-frontend) and [collections](https://github.com/alphagov/collections).
+  </Card>
+  <Card title="Publishing apps" icon="pencil">
+    Used by editors to create and publish content. Examples include [Whitehall](https://github.com/alphagov/whitehall), [Publisher](https://github.com/alphagov/publisher) and [Specialist Publisher](https://github.com/alphagov/specialist-publisher).
+  </Card>
+  <Card title="APIs" icon="plug">
+    Provide functionality to other apps. The central ones are [Publishing API](https://github.com/alphagov/publishing-api), [Content Store](https://github.com/alphagov/content-store) and [Search API](https://github.com/alphagov/search-api).
+  </Card>
+</CardGroup>
+
+## How publishing works
+
+Content flows through the platform in two stages: draft and live.
+
+1. A publisher creates or edits content in a publishing application (such as Whitehall or Publisher).
+1. The publishing app sends the content to [Publishing API](https://github.com/alphagov/publishing-api).
+1. Publishing API saves the content to the **draft** Content Store, where it can be previewed.
+1. When the publisher is ready, they click Publish. Publishing API sends the content to the **live** Content Store.
+1. The Content Store notifies [Router](https://github.com/alphagov/router) that content is available at a given URL.
+1. A frontend application renders the content to the end user on www.gov.uk.
+
+The [Fastly](https://www.fastly.com/) content delivery network (CDN) sits in front of GOV.UK and handles around 70% of requests from cache, reducing the load on the origin infrastructure.
+
+## How access is controlled
+
+[Signon](https://github.com/alphagov/signon) is GOV.UK's single sign-on system. Publishing applications require users to authenticate via Signon. Signon also manages permissions, so a publishing app can check whether a user has permission to publish, unpublish or perform other actions.
+
+The draft stack is protected by [Authenticating Proxy](https://github.com/alphagov/authenticating-proxy), which requires a valid Signon session or a secret JSON web token (JWT) to access draft content.
+
+## Key concepts
+
+Before diving into the codebase, it helps to understand a few fundamental concepts:
+
+| Concept | What it means |
+|---|---|
+| **Content item** | A single piece of content stored in the Content Store, representing one edition of a document |
+| **Edition** | A version of a document — Publishing API stores all editions, Content Store stores only the latest |
+| **Base path** | The reserved URL on www.gov.uk associated with a content item |
+| **Document type** | A classification for content items (e.g. `news_article`, `guide`, `travel_advice`) |
+| **Link expansion** | The process of embedding related content items (e.g. breadcrumbs, organisations) into a content item payload |
+| **Schema** | A JSON schema definition for a kind of document |
+
+See the full [GOV.UK developer dictionary](/getting-started/dictionary) for all terms.
+
+## Where to learn more
+
+<AccordionGroup>
+  <Accordion title="Architecture">
+    - [Architecture overview](/getting-started/architecture-overview) — high-level diagram and description of GOV.UK's technical architecture
+    - [Architectural deep-dive](/getting-started/architecture-deep-dive) — detailed walkthrough of what happens when a user visits a page, a publisher publishes, and a developer deploys
+  </Accordion>
+  <Accordion title="Applications and code">
+    - [GOV.UK applications](/getting-started/apps) — the full list of GOV.UK apps grouped by type
+    - [GOV.UK repositories](/getting-started/repos) — all repositories, including gems and utilities
+  </Accordion>
+  <Accordion title="Environments and deployment">
+    - [GOV.UK environments](/getting-started/environments) — integration, staging and production
+    - [Release app](https://release.publishing.service.gov.uk/) — track which version of each app is deployed where
+  </Accordion>
+  <Accordion title="Community and learning">
+    - Sign up for an [Introduction to GOV.UK Architecture](https://docs.google.com/spreadsheets/d/1pDQavKZoZbRpoprlouk5YDZWS6mjSw3ILvCYmFkGWwE/edit) session or watch a [recording of a past session](https://drive.google.com/file/d/1-az_Y_JeKJ2Xhqrc7VNVt1sKOTEpHbcM/view)
+    - Browse the [GOV.UK architecture folder](https://drive.google.com/drive/folders/1xIjPkD_MSKMR65FbDAb-ToXy2GmBcaJ5) on Google Drive
+    - Ask questions in [#govuk-developers](https://gds.slack.com/archives/CAB4Q3QBW) on Slack
+  </Accordion>
+</AccordionGroup>

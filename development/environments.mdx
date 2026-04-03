@@ -1,0 +1,85 @@
+---
+title: Deployment environments
+description: An overview of GOV.UK's integration, staging, and production environments — what each is for, how they differ, and how to access them as a developer.
+---
+
+GOV.UK has three environments hosted in AWS, each serving a distinct purpose in the development and deployment pipeline. By _environment_, we mean:
+
+- A self-contained, running instance of all the software components of GOV.UK
+- The AWS account and VPC network that hosts it
+- The configuration (settings) for that instance
+
+The [Release dashboard](https://release.publishing.service.gov.uk/) shows which application versions are currently deployed in each environment.
+
+## Local development
+
+Developers generally use either [govuk-docker](https://github.com/alphagov/govuk-docker/) to run applications locally, or run applications directly on their machines alongside copies of the necessary databases.
+
+## Integration
+
+Integration is the first environment in the continuous deployment pipeline.
+
+**GOV.UK product teams use integration for:**
+
+- Manual software testing where automated test coverage or `govuk-docker` is insufficient
+- Automated end-to-end and system tests (govuk-e2e-tests) — these determine whether a software release is automatically promoted to staging
+
+Integration is also used by content editors at GDS and in other departments as a workaround to preview certain content types. This usage is expected to be replaced by proper preview functionality in Publisher applications in future.
+
+<Note>
+  There are no availability guarantees for the integration environment. Support is on a best-effort basis only.
+</Note>
+
+**Argo CD access:** [argo.eks.integration.govuk.digital](https://argo.eks.integration.govuk.digital/) — requires your GitHub account to be in the [GOV.UK team](https://github.com/orgs/alphagov/teams/gov-uk).
+
+## Staging
+
+Staging mirrors the production environment and is a gate for automatic promotion of releases to production.
+
+**GOV.UK Platform Engineering uses staging for:**
+
+- Verifying changes to cluster configuration or cloud infrastructure (e.g. Kubernetes cluster upgrades)
+
+**GOV.UK product teams occasionally use staging for:**
+
+- Testing major changes that need to run against a full copy of production data
+- Load testing and stress testing
+
+<Info>
+  Front ends in staging are only reachable from GDS network addresses. If you're working outside a GDS office, connect via the VPN to view the website. Apps requiring GOV.UK Signon login do not require the VPN.
+</Info>
+
+**Argo CD access:** [argo.eks.staging.govuk.digital](https://argo.eks.staging.govuk.digital/) — requires [production access](/infrastructure/rules-for-getting-production-access).
+
+## Production
+
+Production runs the application versions that serve content to the general public. All code reaching production has passed through integration and staging, including automated end-to-end smoke tests at each stage.
+
+**Argo CD access:** [argo.eks.production.govuk.digital](https://argo.eks.production.govuk.digital/) — requires [production access](/infrastructure/rules-for-getting-production-access).
+
+## Environment summary
+
+<CardGroup cols={3}>
+  <Card title="Integration" icon="code">
+    First stop in the CD pipeline. Used for manual and automated testing. No availability guarantees. Accessible to all GOV.UK developers.
+  </Card>
+  <Card title="Staging" icon="flask">
+    Gate before production. Full copy of production data. Front ends restricted to GDS network. Requires production access.
+  </Card>
+  <Card title="Production" icon="globe">
+    Serves the public. Only receives code that has passed smoke tests in integration and staging. Requires production access.
+  </Card>
+</CardGroup>
+
+## Determining the current environment in code
+
+Use the `GovukEnvironment.current` method from [govuk_app_config](https://github.com/alphagov/govuk_app_config), which is available by default to all GOV.UK apps:
+
+```ruby
+GovukEnvironment.current
+# => "production", "staging", "integration", or "local"
+```
+
+<Warning>
+  Exercise caution before writing environment-dependent code. Logic that only executes in specific environments (such as production) is hard to test, leads to brittle systems, and increases the risk of runtime failures. Prefer feature flags or configuration-driven behaviour so code paths are exercised consistently across all environments.
+</Warning>
